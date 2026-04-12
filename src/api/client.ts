@@ -1,0 +1,220 @@
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+const AUTH_PATHS = ['/api/auth/register', '/api/auth/login', '/api/auth/verify', '/api/auth/join-department', '/api/auth/departments'];
+
+export interface Department {
+  id: string;
+  code: string;
+  name: string | null;
+}
+
+class ApiClient {
+  private token: string | null = null;
+  private departmentId: string | null = null;
+
+  setToken(token: string | null) {
+    this.token = token;
+    if (token) {
+      localStorage.setItem('rs_token', token);
+    } else {
+      localStorage.removeItem('rs_token');
+    }
+  }
+
+  getToken(): string | null {
+    if (!this.token) {
+      this.token = localStorage.getItem('rs_token');
+    }
+    return this.token;
+  }
+
+  setDepartmentId(id: string | null) {
+    this.departmentId = id;
+    if (id) {
+      localStorage.setItem('rs_dept_id', id);
+    } else {
+      localStorage.removeItem('rs_dept_id');
+    }
+  }
+
+  getDepartmentId(): string | null {
+    if (!this.departmentId) {
+      this.departmentId = localStorage.getItem('rs_dept_id');
+    }
+    return this.departmentId;
+  }
+
+  private needsDepartmentHeader(endpoint: string): boolean {
+    return !AUTH_PATHS.some(p => endpoint.startsWith(p));
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const token = this.getToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+
+    if (token) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+    }
+    if (this.needsDepartmentHeader(endpoint)) {
+      const deptId = this.getDepartmentId();
+      if (deptId) {
+        (headers as Record<string, string>)['X-Department-Id'] = deptId;
+      }
+    }
+
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  // Auth
+  async register(data: { email: string; password: string; name: string; role: string; firm?: string; departmentName?: string }) {
+    return this.request<{ user: any; token: string; department?: Department; departments: Department[] }>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async login(email: string, password: string) {
+    return this.request<{ user: any; token: string; departments: Department[] }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  async verify() {
+    return this.request<{ user: any; departments: Department[] }>('/api/auth/verify');
+  }
+
+  async getDepartments() {
+    return this.request<{ departments: Department[] }>('/api/auth/departments');
+  }
+
+  async joinDepartment(code: string) {
+    return this.request<{ department: Department; alreadyMember?: boolean; pending?: boolean }>('/api/auth/join-department', {
+      method: 'POST',
+      body: JSON.stringify({ code: code.trim().toUpperCase() }),
+    });
+  }
+
+  async getJoinRequests() {
+    return this.request<{ requests: { id: string; userId: string; email: string; name: string; createdAt: number }[] }>('/api/auth/join-requests');
+  }
+
+  async approveJoinRequest(id: string) {
+    return this.request<{ success: boolean; user?: any }>(`/api/auth/join-requests/${id}/approve`, {
+      method: 'POST',
+    });
+  }
+
+  async rejectJoinRequest(id: string) {
+    return this.request<{ success: boolean }>(`/api/auth/join-requests/${id}/reject`, {
+      method: 'POST',
+    });
+  }
+
+  // Users
+  async getDoctors() {
+    return this.request<any[]>('/api/users/doctors');
+  }
+
+  async getUsers() {
+    return this.request<any[]>('/api/users');
+  }
+
+  async addUserByEmail(email: string) {
+    return this.request<any>('/api/users', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async deleteUser(id: string) {
+    return this.request<{ success: boolean }>(`/api/users/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Rosters
+  async getRoster(year: number, month: number) {
+    return this.request<any>(`/api/rosters/${year}/${month}`);
+  }
+
+  async generateRoster(month?: number, year?: number) {
+    return this.request<{ roster: any; report: any }>('/api/rosters/generate', {
+      method: 'POST',
+      body: JSON.stringify({ month, year }),
+    });
+  }
+
+  async updateShift(rosterId: string, shiftId: string, doctorId: string) {
+    return this.request<{ success: boolean }>(`/api/rosters/${rosterId}/shifts/${shiftId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ doctorId }),
+    });
+  }
+
+  async publishRoster(rosterId: string) {
+    return this.request<{ success: boolean }>(`/api/rosters/${rosterId}/publish`, {
+      method: 'POST',
+    });
+  }
+
+  /** Recompute cumulative hours/PH/weekends from all published rosters. Use if rosters were published before tracking was added. */
+  async syncCumulative() {
+    return this.request<{ success: boolean; message: string; doctorsUpdated: number }>('/api/rosters/sync-cumulative', {
+      method: 'POST',
+    });
+  }
+
+  // Requests
+  async getRequests() {
+    return this.request<any[]>('/api/requests');
+  }
+
+  async createRequest(data: { type: string; date: string; reason?: string; swapWithDoctorId?: string }) {
+    return this.request<any>('/api/requests', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateRequestStatus(id: string, status: string) {
+    return this.request<any>(`/api/requests/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  // Analytics
+  async getFairnessReport(year: number, month: number) {
+    return this.request<any>(`/api/analytics/roster/${year}/${month}/fairness`);
+  }
+
+  async getFairnessSettings() {
+    return this.request<{ hourLimit: number; weekendLimit: number }>('/api/analytics/fairness-settings');
+  }
+
+  async updateFairnessSettings(hourLimit: number, weekendLimit: number) {
+    return this.request<{ success: boolean; hourLimit: number; weekendLimit: number }>('/api/analytics/fairness-settings', {
+      method: 'PUT',
+      body: JSON.stringify({ hourLimit, weekendLimit }),
+    });
+  }
+}
+
+export const api = new ApiClient();
