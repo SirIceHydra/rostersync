@@ -120,13 +120,17 @@ app.get('/api/analytics/roster/:year/:month/fairness', authMiddleware, withDept,
     const settings = await db.get(
       'SELECT hour_diff_limit as hourLimit, weekend_diff_limit as weekendLimit FROM fairness_settings WHERE department_id = ?',
       [departmentId]
-    ).catch(() => ({ hourLimit: 24, weekendLimit: 1 }));
+    ).catch(() => null);
 
     // Generate fairness report using configured thresholds
+    // Pass approved requests for weekend conflict detection; unassignedDays is empty (already-saved roster)
+    const approvedRequestsFormatted = requestsFormatted.filter((r: any) => r.status === 'APPROVED');
     const report = RosterEngine.validateFairness(
       doctorsFormatted,
       stats,
       shiftsFormatted,
+      approvedRequestsFormatted,
+      [],
       {
         maxHourDiff: settings?.hourLimit ?? 24,
         maxWeekendDiff: settings?.weekendLimit ?? 1
@@ -145,12 +149,18 @@ app.get('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly,
   try {
     const departmentId = (req as any).departmentId;
     const row = await db.get(
-      'SELECT hour_diff_limit as hourLimit, weekend_diff_limit as weekendLimit FROM fairness_settings WHERE department_id = ?',
+      `SELECT hour_diff_limit as hourLimit,
+              weekend_diff_limit as weekendLimit,
+              max_shifts_per_7_days as maxShiftsPer7Days,
+              allow_consecutive_shifts as allowConsecutiveShifts
+       FROM fairness_settings WHERE department_id = ?`,
       [departmentId]
     );
     res.json({
       hourLimit: row?.hourLimit ?? 24,
-      weekendLimit: row?.weekendLimit ?? 1
+      weekendLimit: row?.weekendLimit ?? 1,
+      maxShiftsPer7Days: row?.maxShiftsPer7Days ?? 2,
+      allowConsecutiveShifts: row?.allowConsecutiveShifts === 1
     });
   } catch (error: any) {
     console.error('Get fairness settings error:', error);
@@ -162,7 +172,7 @@ app.get('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly,
 app.put('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly, async (req, res) => {
   try {
     const departmentId = (req as any).departmentId;
-    const { hourLimit, weekendLimit } = req.body;
+    const { hourLimit, weekendLimit, maxShiftsPer7Days, allowConsecutiveShifts } = req.body;
 
     if (hourLimit == null || weekendLimit == null) {
       return res.status(400).json({ error: 'hourLimit and weekendLimit are required' });
@@ -171,12 +181,23 @@ app.put('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly,
     const now = Date.now();
     await db.run(
       `UPDATE fairness_settings
-       SET hour_diff_limit = ?, weekend_diff_limit = ?, updated_at = ?
+       SET hour_diff_limit = ?,
+           weekend_diff_limit = ?,
+           max_shifts_per_7_days = ?,
+           allow_consecutive_shifts = ?,
+           updated_at = ?
        WHERE department_id = ?`,
-      [hourLimit, weekendLimit, now, departmentId]
+      [
+        hourLimit,
+        weekendLimit,
+        maxShiftsPer7Days ?? 2,
+        allowConsecutiveShifts ? 1 : 0,
+        now,
+        departmentId
+      ]
     );
 
-    res.json({ success: true, hourLimit, weekendLimit });
+    res.json({ success: true, hourLimit, weekendLimit, maxShiftsPer7Days: maxShiftsPer7Days ?? 2, allowConsecutiveShifts: !!allowConsecutiveShifts });
   } catch (error: any) {
     console.error('Update fairness settings error:', error);
     res.status(500).json({ error: 'Failed to update settings' });

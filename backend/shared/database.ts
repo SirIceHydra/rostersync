@@ -81,6 +81,7 @@ export class Database {
       await runQuery(`ALTER TABLE users ADD COLUMN cumulative_total_hours INTEGER DEFAULT 0`).catch(() => {});
       await runQuery(`ALTER TABLE users ADD COLUMN cumulative_weekend_shifts INTEGER DEFAULT 0`).catch(() => {});
       await runQuery(`ALTER TABLE users ADD COLUMN start_date INTEGER`).catch(() => {});
+      await runQuery(`ALTER TABLE users ADD COLUMN workload_start_mode TEXT DEFAULT 'NEXT_MONTH'`).catch(() => {});
 
       // Departments table (multi-tenant: each has unique code)
       await runQuery(`
@@ -144,7 +145,7 @@ export class Database {
           id TEXT PRIMARY KEY,
           department_id TEXT NOT NULL,
           doctor_id TEXT NOT NULL,
-          type TEXT NOT NULL CHECK(type IN ('UNAVAILABLE', 'SWAP', 'LEAVE')),
+          type TEXT NOT NULL CHECK(type IN ('UNAVAILABLE', 'SWAP', 'LEAVE', 'PREFERRED_WORK')),
           date TEXT NOT NULL,
           status TEXT NOT NULL CHECK(status IN ('PENDING', 'APPROVED', 'REJECTED')),
           reason TEXT,
@@ -164,6 +165,8 @@ export class Database {
           department_id TEXT NOT NULL UNIQUE,
           hour_diff_limit INTEGER NOT NULL DEFAULT 24,
           weekend_diff_limit INTEGER NOT NULL DEFAULT 1,
+          max_shifts_per_7_days INTEGER NOT NULL DEFAULT 2,
+          allow_consecutive_shifts INTEGER NOT NULL DEFAULT 0,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
           FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE
@@ -269,6 +272,39 @@ export class Database {
         }
         await this.run('DROP TABLE fairness_settings');
         await this.run('ALTER TABLE fairness_settings_new RENAME TO fairness_settings');
+      }
+
+      // Migration: add new fairness_settings columns for existing databases
+      await runQuery(`ALTER TABLE fairness_settings ADD COLUMN max_shifts_per_7_days INTEGER NOT NULL DEFAULT 2`).catch(() => {});
+      await runQuery(`ALTER TABLE fairness_settings ADD COLUMN allow_consecutive_shifts INTEGER NOT NULL DEFAULT 0`).catch(() => {});
+
+      // Migration: update requests CHECK constraint to include PREFERRED_WORK.
+      // SQLite doesn't support ALTER COLUMN, so we recreate the table if needed.
+      const reqTableDef = await this.get(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='requests'"
+      ).catch(() => null);
+      if (reqTableDef?.sql && !reqTableDef.sql.includes('PREFERRED_WORK')) {
+        await this.run('DROP TABLE IF EXISTS requests_migration_temp');
+        await this.run(`
+          CREATE TABLE requests_migration_temp (
+            id TEXT PRIMARY KEY,
+            department_id TEXT NOT NULL,
+            doctor_id TEXT NOT NULL,
+            type TEXT NOT NULL CHECK(type IN ('UNAVAILABLE', 'SWAP', 'LEAVE', 'PREFERRED_WORK')),
+            date TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('PENDING', 'APPROVED', 'REJECTED')),
+            reason TEXT,
+            swap_with_doctor_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+            FOREIGN KEY (doctor_id) REFERENCES users(id),
+            FOREIGN KEY (swap_with_doctor_id) REFERENCES users(id)
+          )
+        `);
+        await this.run('INSERT INTO requests_migration_temp SELECT * FROM requests');
+        await this.run('DROP TABLE requests');
+        await this.run('ALTER TABLE requests_migration_temp RENAME TO requests');
       }
 
       // Create indexes for performance

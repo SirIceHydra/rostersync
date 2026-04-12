@@ -1,196 +1,531 @@
-# RosterSync Medical MVP
+# RosterSync — Complete Setup & Testing Guide
 
-A phone-first web application for medical department roster management with automated fairness algorithms, public request tracking, and transparent analytics.
+This guide is written so that anyone — with or without a technical background — can pull this project and have the full system running and testable within minutes. Follow every step in order.
 
-## Features
+---
 
-✅ **Auto Roster Generation** - Intelligent algorithm ensuring fair shift distribution  
-✅ **Calendar & List Views** - Full month calendar table + day-by-day list view  
-✅ **Public Request System** - Transparent leave/swap requests visible to all doctors  
-✅ **Fairness Analytics** - Real-time workload equity tracking and warnings  
-✅ **Role-Based Access** - Admin (Medical Officer) and Doctor roles  
-✅ **Microservices Backend** - Scalable architecture with REST APIs  
-✅ **Offline Support** - Falls back to localStorage when backend unavailable  
+## What is RosterSync?
 
-## Quick Start
+RosterSync is a web application that automatically generates fair on-call rosters for medical departments. It has two types of users:
 
-### Frontend Only (Demo Mode)
+- **Admins (HODs / Department Leads)** — create departments, add doctors, generate and publish monthly rosters, approve or reject requests, and view fairness reports.
+- **Doctors** — log in, view their roster, and submit requests (leave, unavailability, or preferred work days).
 
-```bash
-npm install
-npm run dev
+---
+
+## Before You Start — Install Node.js
+
+Node.js is the only thing you need to install. If you already have it, skip this section.
+
+1. Open your browser and go to **https://nodejs.org**
+2. Click the big **"LTS"** download button
+3. Open the downloaded file and follow the installer (click Next all the way through)
+
+**Check it worked:**
+- On **Mac**: press `Command + Space`, type `Terminal`, press Enter
+- On **Windows**: press the Windows key, type `cmd`, press Enter
+
+In the window that opens, type:
+
+```
+node --version
 ```
 
-Visit `http://localhost:3000` - Works with localStorage fallback.
+Press Enter. You should see something like `v20.11.0`. If you do, you're ready.
 
-### Full Stack (Backend + Frontend)
+---
 
-**1. Start Backend Services:**
+## Step 1 — Open the Project Folder in Terminal
 
-```bash
+- On **Mac**: open Terminal, then type `cd ` (with a space after), drag the `rostersync` folder into the terminal window, and press Enter.
+- On **Windows**: open Command Prompt, type `cd ` then type or paste the full path to the folder, e.g. `cd C:\Users\YourName\Documents\rostersync`
+
+---
+
+## Step 2 — Install Dependencies (One-Time Setup)
+
+Run these commands in order. Wait for each to finish before running the next.
+
+Install the **frontend**:
+
+```
+npm install
+```
+
+Install the **backend**:
+
+```
 cd backend
 npm install
-cp .env.example .env
-# Edit .env with your settings
-npm run dev  # Starts all microservices
+cd ..
 ```
 
-**2. Start Frontend:**
+You only need to do this once. Next time you can skip straight to Step 3.
 
-```bash
-# In project root
-npm install
+---
+
+## Step 3 — Start the Backend (Server)
+
+Open a terminal window, go to the project folder, and run:
+
+```
+cd backend
 npm run dev
 ```
 
-**3. Register & Login:**
-
-- Visit `http://localhost:3000`
-- Click "Register" to create an account
-- Login with your credentials
-
-## Architecture
-
-### Frontend
-- React + TypeScript
-- Vite build system
-- Responsive mobile-first design
-- API client with automatic fallback
-
-### Backend (Microservices)
-- **API Gateway** (Port 4000) - Routes requests
-- **Auth Service** (Port 4001) - JWT authentication
-- **Roster Service** (Port 4002) - Roster generation
-- **Request Service** (Port 4003) - Doctor requests
-- **User Service** (Port 4004) - User management
-- **Analytics Service** (Port 4005) - Fairness reports
-
-### Database
-- SQLite (development)
-- Ready for PostgreSQL/MySQL (production)
-
-## Project Structure
+After about 5 seconds you should see all six lines appear:
 
 ```
-rostersync-medical-mvp/
-├── backend/              # Microservices backend
-│   ├── services/         # Individual microservices
-│   ├── shared/          # Shared utilities (DB, auth, types)
-│   └── package.json
-├── src/
-│   ├── api/             # API client
-│   └── components/      # React components
-├── App.tsx              # Main application
-├── types.ts             # TypeScript types
-├── constants.ts         # Constants & templates
-├── rosterEngine.ts      # Roster generation algorithm
-└── package.json
+🔐 Auth Service running on port 4001
+📅 Roster Service running on port 4002
+📝 Request Service running on port 4003
+👥 User Service running on port 4004
+📊 Analytics Service running on port 4005
+🚀 API Gateway running on port 4000
 ```
 
-## Key Features
+**Keep this window open.** The server stops if you close it.
 
-### Roster Generation
-- Automatic shift assignment with fairness constraints
-- No consecutive shifts enforcement
-- Weekend/holiday balancing
-- Public holiday priority tracking
+---
 
-### Calendar View
-- Full month table showing all shifts
-- Color-coded shifts (your shifts, holidays, today)
-- Toggle between Calendar and List views
+## Step 4 — Start the Frontend (Website)
 
-### Request Management
-- Public visibility (all doctors see all requests)
-- Admin-only confidential reasons
-- First-come-first-served priority
-- Approve/reject workflow
+Open a **second** terminal window, go to the project folder, and run:
 
-### Analytics
-- Workload equity index
-- Public holiday ledger
-- Fairness violation warnings
-
-## Environment Variables
-
-**Frontend** (`.env`):
-```env
-VITE_API_URL=http://localhost:4000
+```
+npm run dev
 ```
 
-**Backend** (`backend/.env`):
-```env
-JWT_SECRET=your-secret-key
-DB_PATH=./data/rostersync.db
+You should see:
+
+```
+  VITE ready in ... ms
+  ➜  Local:   http://localhost:3000/
+```
+
+**Keep this window open too.**
+
+---
+
+## Step 5 — Open the App
+
+Open your web browser (Chrome or Firefox recommended) and go to:
+
+```
+http://localhost:3000
+```
+
+You will see the RosterSync login screen.
+
+---
+
+## One-Command Start (Alternative to Steps 3 & 4)
+
+If you prefer, you can start everything with a single command from the project root:
+
+```
+npm run dev:all
+```
+
+This starts both backend and frontend in the same terminal window. Wait until you see all 6 backend service lines plus the Vite line before opening the browser.
+
+---
+
+## Accounts Already in the Database
+
+The database has existing test accounts from development. Passwords are stored as one-way encrypted hashes and **cannot be read back**, so the passwords for these accounts are not recoverable.
+
+**We recommend creating fresh accounts** using the steps below. The existing accounts are listed here for reference:
+
+| Name | Email | Role | Department |
+|---|---|---|---|
+| Dr. Test3 | test3@med.com | Admin | LEGACY |
+| Dr Admin | admin@email.com | Admin | LEGACY |
+| Dr Admin 2 | admin@admin.com | Admin | Livingstone Neuro |
+| Dr. Test2 | test2@med.com | Doctor | LEGACY |
+| Dr Reshad | reshad.amin101@gmail.com | Doctor | LEGACY |
+| Dr Test 22 | reshad@test.com | Doctor | Livingstone Neuro |
+
+**Active department codes:**
+
+| Department | Join Code |
+|---|---|
+| Livingstone Neuro | `F3665JK3` |
+
+---
+
+## Creating Test Accounts (Recommended Starting Point)
+
+### Create an Admin Account
+
+1. On the login screen, click **Register**
+2. Fill in:
+   - **Name:** `Test Admin`
+   - **Email:** `admin@test.com`
+   - **Password:** `TestPass123`
+   - **Role:** Admin
+   - **Department Name:** `Cardiology Unit` *(any name you like)*
+   - **Firm/Practice:** `City Hospital` *(optional)*
+3. Click **Register**
+4. You will be logged in and land on your dashboard
+5. Your **department code** is shown on screen — write it down. Doctors need this to join your department. It looks like `A1B2C3D4`.
+
+### Create Doctor Accounts
+
+You need at least 3 doctors for the roster to be interesting. For each doctor:
+
+1. Open a **Private / Incognito** browser window (so you can be logged in as two people at once)
+2. Go to `http://localhost:3000`
+3. Click **Register**
+4. Fill in:
+   - **Name:** e.g. `Dr Smith`
+   - **Email:** e.g. `drsmith@test.com`
+   - **Password:** `TestPass123`
+   - **Role:** Doctor
+   - **Firm:** `City Hospital`
+5. Click **Register**
+6. You'll be asked to join a department — enter your admin's department code
+7. Click **Request to Join**
+8. A message confirms the request was sent
+
+Repeat for more doctors. Suggested test accounts:
+
+| Name | Email | Password |
+|---|---|---|
+| Dr Smith | drsmith@test.com | TestPass123 |
+| Dr Jones | drjones@test.com | TestPass123 |
+| Dr Lee | drlee@test.com | TestPass123 |
+| Dr Patel | drpatel@test.com | TestPass123 |
+
+---
+
+## Testing Every Feature
+
+### Feature 1 — Approve Doctor Join Requests
+
+**Who:** Admin
+
+1. Log in as Admin (`admin@test.com` / `TestPass123`)
+2. Go to the **Staff** or **Team** section
+3. Find pending join requests from the doctors you registered
+4. Click **Approve** for each
+5. Doctors are now in your department and will appear in rosters
+
+---
+
+### Feature 2 — Generate a Roster
+
+**Who:** Admin
+
+1. Log in as Admin
+2. Click the **Roster** or **Calendar** tab
+3. Select the month and year (e.g. May 2026)
+4. Click **Generate Roster**
+5. The roster appears — one doctor assigned per day
+6. Weekdays show 16-hour night shifts (4 PM → 8 AM)
+7. Weekends show 24-hour shifts (8 AM → 8 AM)
+8. South African public holidays are highlighted automatically
+
+**What to check:**
+- Every day has a doctor assigned
+- No doctor appears on two consecutive days (unless department is critically short-staffed)
+- No doctor has more than 2 shifts in any 7-day stretch
+
+---
+
+### Feature 3 — View the Fairness Report
+
+**Who:** Admin and Doctors
+
+After generating a roster, find the **Fairness Report** or **Analytics** section. You will see:
+
+- Each doctor's **total hours**, **weekend shifts**, and **public holiday shifts** this month
+- Any **warnings**, for example:
+  - `Hour Discrepancy: 32h difference exceeds the fair limit`
+  - `Weekend Imbalance: shifts not split equally`
+  - `Unassigned Day: 2026-05-10 — all doctors are on approved leave. Manual assignment required.`
+  - `Weekend Conflict on 2026-05-09: 2 doctors requested the same day off — admin review required.`
+
+---
+
+### Feature 4 — Submit a Leave Request (Doctor)
+
+**Who:** Doctor
+
+1. Log in as a Doctor (e.g. `drsmith@test.com` / `TestPass123`)
+2. Click the **Requests** tab
+3. Click **New Request**
+4. Set **Type** to `Leave`
+5. Pick a date in the upcoming month
+6. Add an optional reason
+7. Click **Submit**
+8. Status shows as **Pending**
+
+---
+
+### Feature 5 — Submit an Unavailability Request (Doctor)
+
+Same as Feature 4, but choose **Type: Unavailable**. This signals the doctor is technically available in emergencies but prefers not to work that day.
+
+---
+
+### Feature 6 — Submit a "Preferred Work" Request (Doctor)
+
+This lets a doctor request to be assigned on a specific day (e.g. they want to be on-call before a planned post-call day off).
+
+1. Log in as a Doctor
+2. Click **Requests** → **New Request**
+3. Set **Type** to `Preferred Work`
+4. Pick a date
+5. Click **Submit**
+6. Once Admin approves it, the next roster generation gives this doctor guaranteed priority on that day (still subject to leave conflicts and rest rules)
+
+---
+
+### Feature 7 — Approve or Reject Requests (Admin)
+
+**Who:** Admin
+
+1. Log in as Admin
+2. Click the **Requests** tab
+3. All pending requests from all doctors are listed
+4. Click **Approve** or **Reject** on each
+5. Reasons submitted by doctors are visible only to Admin
+
+**Test tip:** Approve a leave request from Dr Smith, then regenerate the roster — Dr Smith should not appear on that date.
+
+---
+
+### Feature 8 — Regenerate Roster After Approving Requests
+
+1. After approving requests, go back to the **Roster** tab
+2. Click **Generate Roster** again for the same month
+3. The new roster will:
+   - Skip doctors with approved leave on that day
+   - Give top priority to doctors with approved Preferred Work requests
+   - Trigger weekend conflict warnings if multiple doctors have leave on the same weekend day
+
+---
+
+### Feature 9 — Weekend Conflict Warning
+
+**To test this:**
+1. Log in as Dr Smith — submit a Leave request for a Saturday
+2. Log in as Dr Jones — submit a Leave request for the **same Saturday**
+3. Log in as Admin — approve both requests
+4. Generate the roster
+5. In the Fairness Report, you should see: `Weekend Conflict on YYYY-MM-DD: 2 doctors requested the same day off — admin review required.`
+6. Admin can then contact the two doctors to resolve it
+
+---
+
+### Feature 10 — Manually Edit a Shift (Admin)
+
+**Who:** Admin
+
+1. On the Roster view, click on any assigned shift
+2. Choose a different doctor from the list
+3. Save — the shift is reassigned immediately
+
+---
+
+### Feature 11 — Publish a Roster (Admin)
+
+Publishing locks the roster as official and updates each doctor's long-term cumulative stats (hours, weekends, public holidays). These stats feed into the fairness algorithm for future months.
+
+1. Admin: click **Publish** on the current month's roster
+2. Status changes from **Draft** to **Final**
+3. Each doctor's cumulative statistics are updated automatically
+
+---
+
+### Feature 12 — Adjust Fairness Settings (Admin)
+
+Admin can change the thresholds that trigger fairness warnings, and configure scheduling rules.
+
+1. Log in as Admin
+2. Go to **Analytics** or **Settings**
+3. You will see four settings:
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Hour Difference Limit** | How many hours apart two doctors can be before a warning fires | 24 |
+| **Weekend Difference Limit** | How many extra weekends one doctor can have vs another before a warning | 1 |
+| **Max Shifts per 7 Days** | Rolling weekly cap per doctor — raise this if the department is short-staffed | 2 |
+| **Allow Consecutive Shifts** | When ON, back-to-back shifts are allowed freely (for very short-staffed situations). Default is OFF. | OFF |
+
+4. Change any value, save, and regenerate the roster to see the effect
+
+---
+
+### Feature 13 — Set a New Doctor's Workload Start Mode (Admin)
+
+When a new doctor joins, Admin can decide how quickly they reach full workload.
+
+1. Log in as Admin
+2. Go to **Staff** → find the new doctor → click **Edit**
+3. Set **Workload Start**:
+   - **NEXT_MONTH** (default) — reduced load in the first 2 months; the doctor won't be overloaded just because they have fewer historical hours
+   - **IMMEDIATE** — treated exactly the same as experienced doctors from day one
+4. Save and regenerate the roster
+
+---
+
+### Feature 14 — New Doctor Integration (Automatic)
+
+When a doctor's `Workload Start Mode` is `NEXT_MONTH`, the algorithm automatically:
+- Detects that they have fewer than 2 months of history
+- Sets their "effective cumulative hours" to approximately 80% of what a veteran would have
+- This prevents the new doctor from being assigned every shift just because their total is zero
+
+This is automatic and requires no admin action beyond leaving the default setting.
+
+---
+
+### Feature 15 — Sync Cumulative Stats (Admin)
+
+If the database has published rosters from before cumulative tracking was added, this button recalculates all stats from scratch.
+
+1. Log in as Admin
+2. Find the **Sync Cumulative** or **Recalculate Stats** button (in roster or settings area)
+3. Click it — all doctors' cumulative hours, weekends, and holiday hours are recomputed from all published rosters
+
+---
+
+### Feature 16 — Multi-Department Support
+
+A user can belong to multiple departments. Admins manage only their own department.
+
+**To test:**
+1. Create a second Admin account with a different email and department name
+2. Note the second department's code
+3. Log in as a Doctor account
+4. Go to the department switcher (dropdown at top of screen)
+5. Enter the second department's code and request to join
+6. The second Admin approves
+7. The doctor can now switch between departments using the dropdown
+
+---
+
+## Port Reference
+
+| Service | Port | Purpose |
+|---|---|---|
+| Frontend (browser) | 3000 | The UI you open in your browser |
+| API Gateway | 4000 | Receives all requests and routes them |
+| Auth Service | 4001 | Login, register, department management |
+| Roster Service | 4002 | Generate, edit, publish rosters |
+| Request Service | 4003 | Leave, swap, preferred work requests |
+| User Service | 4004 | Doctor profiles and workload settings |
+| Analytics Service | 4005 | Fairness reports and settings |
+
+---
+
+## Environment Configuration
+
+The backend configuration file is at `backend/.env`. The default values work out of the box:
+
+```
+JWT_SECRET=rostersync-dev-secret-change-in-production
 CORS_ORIGIN=http://localhost:3000
+DB_PATH=./data/rostersync.db
+GATEWAY_PORT=4000
+AUTH_SERVICE_PORT=4001
+ROSTER_SERVICE_PORT=4002
+REQUEST_SERVICE_PORT=4003
+USER_SERVICE_PORT=4004
+ANALYTICS_SERVICE_PORT=4005
 ```
 
-## Build
+Do not change these unless you know what you are doing.
 
-**Frontend:**
-```bash
-npm run build
+---
+
+## Database
+
+The database file is a single file at:
+
+```
+backend/data/rostersync.db
 ```
 
-**Backend:**
-```bash
-cd backend
-npm run build
-```
+It is created automatically on first run. You do not need to set it up manually.
 
-## Testing
+If you want to start completely fresh (wipe all data and accounts):
 
-1. **Frontend Only:** Works standalone with localStorage
-2. **Full Stack:** Start backend, then frontend
-3. **Register** an admin account
-4. **Add doctors** via Staff management
-5. **Generate roster** from Dashboard
-6. **View calendar** in Roster tab
-7. **Submit requests** as doctors
-8. **Approve/reject** as admin
+1. Stop the backend (Ctrl + C in the backend terminal)
+2. Delete the file `backend/data/rostersync.db`
+3. Start the backend again — a fresh empty database is created
+4. Register new accounts from scratch
+
+---
 
 ## Troubleshooting
 
-### ECONNREFUSED Error on Registration/Login
+**Blank page or "Cannot connect"**
+- Make sure both terminal windows are still open and running
+- Make sure the backend shows all 6 service lines
+- Try refreshing the browser
 
-**Symptom:** Error message like `[HPM] Error occurred while proxying request ... to http://localhost:4001/ [ECONNREFUSED]`
+**"Port already in use" error**
+- Another program is on the same port
+- Restart your computer and try again
 
-**Cause:** The API Gateway is running but the individual microservices are not.
+**Login says "Invalid credentials" on existing accounts**
+- The password for that development account is not known
+- Click **Register** and create a new account instead
 
-**Solution:** Make sure to run `npm run dev` from the `backend/` folder. This starts ALL services together using `concurrently`. If you previously ran only `npm run dev:gateway`, stop it (Ctrl+C) and run `npm run dev` instead.
+**Roster generates but only shows a few days**
+- You need at least 2 approved doctors in the department
+- Go to Staff, check all doctors are approved (not pending)
 
-### Database Not Created
+**Backend crashes immediately after `npm run dev`**
+- Make sure you ran `npm install` inside the `backend/` folder specifically
+- Make sure you are inside the `backend/` folder when running `npm run dev`
 
-**Symptom:** Database-related errors when registering or fetching data.
+**CORS error in browser**
+- Make sure `CORS_ORIGIN=http://localhost:3000` is in `backend/.env`
+- Make sure the frontend is running on port 3000 (shown in the Vite output)
 
-**Solution:** The database and `data/` directory are created automatically on first service start. Make sure you have write permissions to the backend folder.
+---
 
-### CORS Errors
+## Stopping the App
 
-**Symptom:** "Blocked by CORS policy" in browser console.
+In each terminal window, press:
 
-**Solution:** Ensure the `CORS_ORIGIN` in `backend/.env` matches your frontend URL (default: `http://localhost:3000`).
+```
+Ctrl + C
+```
 
-## API Documentation
+This safely shuts down the servers.
 
-See `backend/README.md` for complete API documentation.
+---
 
-## Scalability
+## File Structure
 
-The microservices architecture enables:
-- Independent service scaling
-- Service isolation (failures don't cascade)
-- Technology flexibility per service
-- Easy database migration (SQLite → PostgreSQL)
-
-## Security
-
-- JWT authentication
-- Password hashing (bcrypt)
-- Role-based access control
-- CORS protection
-- SQL injection protection
-
-## License
-
-Private - Medical MVP
+```
+rostersync/
+├── backend/
+│   ├── data/
+│   │   └── rostersync.db          ← All data lives here
+│   ├── services/
+│   │   ├── auth-service.ts        ← Login, register, departments
+│   │   ├── roster-service.ts      ← Roster generation & publishing
+│   │   ├── request-service.ts     ← Leave/swap/preferred-work requests
+│   │   ├── user-service.ts        ← Doctor management
+│   │   ├── analytics-service.ts   ← Fairness reports & settings
+│   │   └── gateway.ts             ← API router
+│   ├── shared/
+│   │   ├── rosterEngine.ts        ← The fairness algorithm
+│   │   ├── types.ts               ← Data types
+│   │   ├── database.ts            ← Database setup & migrations
+│   │   └── publicHolidays.ts      ← SA public holidays
+│   └── .env                       ← Backend configuration
+├── src/
+│   ├── api/client.ts              ← Frontend API calls
+│   └── components/                ← UI components
+├── App.tsx                        ← Main frontend application
+├── types.ts                       ← Shared types (frontend copy)
+├── rosterEngine.ts                ← Algorithm (frontend copy)
+└── README.md                      ← This guide
+```

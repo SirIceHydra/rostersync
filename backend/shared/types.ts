@@ -6,7 +6,8 @@ export enum Role {
 export enum RequestType {
   UNAVAILABLE = 'UNAVAILABLE',
   SWAP = 'SWAP',
-  LEAVE = 'LEAVE'
+  LEAVE = 'LEAVE',
+  PREFERRED_WORK = 'PREFERRED_WORK'  // Doctor requests to be assigned on this day
 }
 
 export enum RequestStatus {
@@ -25,6 +26,7 @@ export interface User {
   cumulativeTotalHours?: number;      // Total hours worked across all published months
   cumulativeWeekendShifts?: number;   // Weekend shifts across all published months
   startDate?: number;                  // When the doctor joined (timestamp)
+  workloadStartMode?: 'IMMEDIATE' | 'NEXT_MONTH'; // Admin-set: IMMEDIATE = full load from month 1, NEXT_MONTH = reduced first month
 }
 
 export interface ShiftTemplate {
@@ -78,4 +80,5 @@ export interface FairnessReport {
   isFair: boolean;
   warnings: string[];
   metrics: FairnessMetric[];
+  unassignedDays: string[]; // Days where no eligible doctor could be found (requires manual assignment)
 }

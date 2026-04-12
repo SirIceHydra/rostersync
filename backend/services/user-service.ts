@@ -43,7 +43,8 @@ app.get('/api/users/doctors', authMiddleware, withDept, async (req, res) => {
       cumulativeHolidayHours: d.cumulative_holiday_hours || 0,
       cumulativeTotalHours: d.cumulative_total_hours || 0,
       cumulativeWeekendShifts: d.cumulative_weekend_shifts || 0,
-      startDate: d.start_date || null
+      startDate: d.start_date || null,
+      workloadStartMode: d.workload_start_mode || 'NEXT_MONTH'
     })));
   } catch (error: any) {
     console.error('Get doctors error:', error);
@@ -60,7 +61,8 @@ app.get('/api/users', authMiddleware, withDept, adminOnly, async (req, res) => {
               u.cumulative_holiday_hours,
               u.cumulative_total_hours,
               u.cumulative_weekend_shifts,
-              u.start_date
+              u.start_date,
+              u.workload_start_mode
        FROM users u
        INNER JOIN user_departments ud ON ud.user_id = u.id AND ud.department_id = ?
        ORDER BY u.name`,
@@ -76,7 +78,8 @@ app.get('/api/users', authMiddleware, withDept, adminOnly, async (req, res) => {
       cumulativeHolidayHours: u.cumulative_holiday_hours || 0,
       cumulativeTotalHours: u.cumulative_total_hours || 0,
       cumulativeWeekendShifts: u.cumulative_weekend_shifts || 0,
-      startDate: u.start_date || null
+      startDate: u.start_date || null,
+      workloadStartMode: u.workload_start_mode || 'NEXT_MONTH'
     })));
   } catch (error: any) {
     console.error('Get users error:', error);
@@ -122,7 +125,8 @@ app.post('/api/users', authMiddleware, withDept, adminOnly, async (req, res) => 
       cumulativeHolidayHours: user.cumulative_holiday_hours || 0,
       cumulativeTotalHours: user.cumulative_total_hours || 0,
       cumulativeWeekendShifts: user.cumulative_weekend_shifts || 0,
-      startDate: user.start_date || null
+      startDate: user.start_date || null,
+      workloadStartMode: user.workload_start_mode || 'NEXT_MONTH'
     });
   } catch (error: any) {
     console.error('Add user error:', error);
@@ -153,7 +157,7 @@ app.delete('/api/users/:id', authMiddleware, adminOnly, async (req, res) => {
 app.patch('/api/users/:id', authMiddleware, adminOnly, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, firm, cumulativeHolidayHours } = req.body;
+    const { name, firm, cumulativeHolidayHours, workloadStartMode } = req.body;
 
     const updates: string[] = [];
     const params: any[] = [];
@@ -169,6 +173,13 @@ app.patch('/api/users/:id', authMiddleware, adminOnly, async (req, res) => {
     if (cumulativeHolidayHours !== undefined) {
       updates.push('cumulative_holiday_hours = ?');
       params.push(cumulativeHolidayHours);
+    }
+    if (workloadStartMode !== undefined) {
+      if (!['IMMEDIATE', 'NEXT_MONTH'].includes(workloadStartMode)) {
+        return res.status(400).json({ error: 'workloadStartMode must be IMMEDIATE or NEXT_MONTH' });
+      }
+      updates.push('workload_start_mode = ?');
+      params.push(workloadStartMode);
     }
 
     if (updates.length === 0) {
@@ -191,7 +202,8 @@ app.patch('/api/users/:id', authMiddleware, adminOnly, async (req, res) => {
       name: user.name,
       role: user.role,
       firm: user.firm,
-      cumulativeHolidayHours: user.cumulative_holiday_hours || 0
+      cumulativeHolidayHours: user.cumulative_holiday_hours || 0,
+      workloadStartMode: user.workload_start_mode || 'NEXT_MONTH'
     });
   } catch (error: any) {
     console.error('Update user error:', error);

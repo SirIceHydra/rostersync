@@ -90,7 +90,8 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
               u.cumulative_holiday_hours,
               u.cumulative_total_hours,
               u.cumulative_weekend_shifts,
-              u.start_date
+              u.start_date,
+              u.workload_start_mode
        FROM users u
        INNER JOIN user_departments ud ON ud.user_id = u.id AND ud.department_id = ?
        WHERE u.role IN ('DOCTOR', 'ADMIN')`,
@@ -114,7 +115,8 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
       cumulativeHolidayHours: d.cumulative_holiday_hours || 0,
       cumulativeTotalHours: d.cumulative_total_hours || 0,
       cumulativeWeekendShifts: d.cumulative_weekend_shifts || 0,
-      startDate: d.start_date || null
+      startDate: d.start_date || null,
+      workloadStartMode: (d.workload_start_mode as 'IMMEDIATE' | 'NEXT_MONTH') || 'NEXT_MONTH'
     }));
 
     const requestsFormatted = requests.map(r => ({
@@ -130,9 +132,13 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
 
     // Load fairness settings for this department
     const settings = await db.get(
-      'SELECT hour_diff_limit as hourLimit, weekend_diff_limit as weekendLimit FROM fairness_settings WHERE department_id = ?',
+      `SELECT hour_diff_limit as hourLimit,
+              weekend_diff_limit as weekendLimit,
+              max_shifts_per_7_days as maxShiftsPer7Days,
+              allow_consecutive_shifts as allowConsecutiveShifts
+       FROM fairness_settings WHERE department_id = ?`,
       [departmentId]
-    ).catch(() => ({ hourLimit: 24, weekendLimit: 1 }));
+    ).catch(() => null);
 
     // Generate roster using current fairness configuration
     const { roster, report } = RosterEngine.generate(
@@ -142,7 +148,9 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
       requestsFormatted,
       {
         maxHourDiff: settings?.hourLimit ?? 24,
-        maxWeekendDiff: settings?.weekendLimit ?? 1
+        maxWeekendDiff: settings?.weekendLimit ?? 1,
+        maxShiftsPer7Days: settings?.maxShiftsPer7Days ?? 2,
+        allowConsecutiveShifts: settings?.allowConsecutiveShifts === 1
       }
     );
 

@@ -1,20 +1,17 @@
 
-import { 
-  User, 
-  Roster, 
-  ScheduledShift, 
-  Request, 
-  RequestType, 
-  RequestStatus, 
-  FairnessReport, 
+import {
+  User,
+  Roster,
+  ScheduledShift,
+  Request,
+  RequestType,
+  RequestStatus,
+  FairnessReport,
   FairnessMetric,
-  ShiftTemplate 
+  ShiftTemplate
 } from './types';
 import { SHIFT_TEMPLATES } from './constants';
 import { getSAPublicHolidays } from './publicHolidays';
-
-// Hard-ish cap: how many calls/shifts a doctor should do in any rolling 7-day window
-const MAX_SHIFTS_PER_7_DAYS = 2;
 
 /**
  * Calculate how many months a doctor has been active in the system.
@@ -33,7 +30,7 @@ function getMonthsActive(startDate: number | undefined, currentMonth: number, cu
  * New joiners should have proportionally lower expected hours.
  */
 function getExpectedCumulativeHours(
-  avgMonthlyHours: number, 
+  avgMonthlyHours: number,
   monthsActive: number,
   maxMonthsTracked: number = 6
 ): number {
@@ -43,32 +40,45 @@ function getExpectedCumulativeHours(
 
 export const RosterEngine = {
   /**
-   * Generates a monthly roster following Page 3-4 fairness rules.
-   * 
+   * Generates a monthly roster following fairness rules.
+   *
    * FAIRNESS ALGORITHM:
    * 1. Considers cumulative hours from previous months (cross-month fairness)
-   * 2. Handles new joiners fairly - they aren't penalized for having fewer hours
+   * 2. Handles new joiners fairly based on their workloadStartMode setting
    * 3. Prioritizes weekend equity on weekend days
    * 4. Respects public holiday longitudinal tracking
-   * 5. Never assigns consecutive shifts
-   * 6. Always assigns someone (relaxes soft constraints if needed, but never hard LEAVE)
+   * 5. Enforces configurable minimum rest between shifts (no-consecutive-shifts toggle)
+   * 6. Respects approved PREFERRED_WORK requests (doctor guaranteed priority on requested day)
+   * 7. Configurable rolling 7-day shift cap (admin slider)
+   * 8. Flags unassigned days and weekend off-request conflicts for admin review
    */
   generate(
-    month: number, 
-    year: number, 
-    doctors: User[], 
+    month: number,
+    year: number,
+    doctors: User[],
     requests: Request[],
-    config?: { maxHourDiff?: number; maxWeekendDiff?: number }
+    config?: {
+      maxHourDiff?: number;
+      maxWeekendDiff?: number;
+      /** Max shifts a doctor can work in any rolling 7-day window. Admin-configurable slider. Default: 2 */
+      maxShiftsPer7Days?: number;
+      /** If false (default), consecutive shifts are blocked. If true, admin has disabled the no-consecutive-shifts rule. */
+      allowConsecutiveShifts?: boolean;
+    }
   ): { roster: Roster; report: FairnessReport } {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const shifts: ScheduledShift[] = [];
-    
+    const unassignedDays: string[] = [];
+
+    const maxShiftsPer7Days = config?.maxShiftsPer7Days ?? 2;
+    const allowConsecutiveShifts = config?.allowConsecutiveShifts ?? false;
+
     // 1. Filter Approved Requests
     const approvedRequests = requests.filter(r => r.status === RequestStatus.APPROVED);
 
     // Calculate average cumulative hours for fairness baseline (for new joiner handling)
     const activeDoctors = doctors.filter(d => (d.cumulativeTotalHours ?? 0) > 0);
-    const avgCumulativeHours = activeDoctors.length > 0 
+    const avgCumulativeHours = activeDoctors.length > 0
       ? activeDoctors.reduce((sum, d) => sum + (d.cumulativeTotalHours ?? 0), 0) / activeDoctors.length
       : 0;
     const avgMonthlyHours = avgCumulativeHours > 0 ? avgCumulativeHours / 3 : 400; // ~3 months average
@@ -77,20 +87,22 @@ export const RosterEngine = {
     // Include cumulative stats from previous months for cross-month fairness
     const stats = doctors.reduce((acc, doc) => {
       const monthsActive = getMonthsActive(doc.startDate, month, year);
-      const isNewJoiner = monthsActive < 2; // Less than 2 months = new joiner
-      
-      // For new joiners, calculate their "fair baseline" to not penalize them
-      // They should catch up gradually, not be overworked immediately
+
+      // New joiner protection is bypassed when admin sets workloadStartMode to IMMEDIATE
+      const isNewJoiner = monthsActive < 2 && doc.workloadStartMode !== 'IMMEDIATE';
+
+      // For new joiners, calculate their "fair baseline" to not penalize them.
+      // They should catch up gradually, not be overworked immediately.
       const expectedHours = getExpectedCumulativeHours(avgMonthlyHours, monthsActive);
       const actualCumulative = doc.cumulativeTotalHours ?? 0;
-      
-      // "Effective cumulative" - for new joiners, use their proportional expected
-      // This prevents them from being assigned all shifts just because they have fewer hours
-      const effectiveCumulative = isNewJoiner 
+
+      // "Effective cumulative" — for new joiners, use their proportional expected.
+      // This prevents them from being assigned all shifts just because they have fewer hours.
+      const effectiveCumulative = isNewJoiner
         ? Math.max(actualCumulative, expectedHours * 0.8) // Allow slight catch-up
         : actualCumulative;
-      
-      acc[doc.id] = { 
+
+      acc[doc.id] = {
         totalHours: 0,                                    // This month's hours
         cumulativeHours: effectiveCumulative,             // Effective cumulative for fairness
         actualCumulativeHours: actualCumulative,          // Real cumulative for reporting
@@ -108,6 +120,7 @@ export const RosterEngine = {
     const weekdayT = SHIFT_TEMPLATES.find(t => !t.isWeekend)!;
     const weekendT = SHIFT_TEMPLATES.find(t => t.isWeekend)!;
 
+    // SA public holidays for this year (and next if Dec roster)
     const saHolidays = getSAPublicHolidays(year, month === 11);
 
     // 3. Daily Loop
@@ -116,23 +129,33 @@ export const RosterEngine = {
       const date = new Date(year, month, day);
       const isWeekend = date.getDay() === 0 || date.getDay() === 6;
       const isPH = saHolidays.includes(dateStr);
-      const template = isWeekend ? weekendT : weekdayT; // Weekends 24h, weekdays 16h
 
       const getRecentShifts = (doctorId: string, windowDays: number = 7) => {
         const days = stats[doctorId].workedDays as number[];
         return days.filter(d => day - d >= 0 && day - d < windowDays).length;
       };
 
-      // Rule: Identify unavailable doctors
+      // Identify doctors unavailable due to LEAVE or UNAVAILABLE requests
       const unavailable = approvedRequests
         .filter(r => r.date === dateStr && (r.type === RequestType.LEAVE || r.type === RequestType.UNAVAILABLE))
         .map(r => r.doctorId);
 
+      // Identify doctors with an approved PREFERRED_WORK request for today.
+      // These doctors get guaranteed top priority in assignment (still subject to hard constraints).
+      const preferredWorkers = approvedRequests
+        .filter(r => r.date === dateStr && r.type === RequestType.PREFERRED_WORK)
+        .map(r => r.doctorId);
+
       const sortByFairness = (pool: User[]) => {
         pool.sort((a, b) => {
+          // Approved PREFERRED_WORK requests are highest priority — doctor guaranteed first pick
+          const aPreferred = preferredWorkers.includes(a.id);
+          const bPreferred = preferredWorkers.includes(b.id);
+          if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
+
           // For weekend days, FIRST equalize weekend counts (cumulative + this month)
           if (isWeekend) {
-            const wDiffCum = (stats[a.id].cumulativeWeekends + stats[a.id].weekends) - 
+            const wDiffCum = (stats[a.id].cumulativeWeekends + stats[a.id].weekends) -
                              (stats[b.id].cumulativeWeekends + stats[b.id].weekends);
             if (wDiffCum !== 0) return wDiffCum;
           }
@@ -167,34 +190,36 @@ export const RosterEngine = {
         });
       };
 
-      // Rule: Apply Hard Constraints (Page 3)
-      let eligible = doctors.filter(doc => 
-        !unavailable.includes(doc.id) && 
-        stats[doc.id].lastWorkedDay !== day - 1 && // No consecutive shifts
-        getRecentShifts(doc.id) < MAX_SHIFTS_PER_7_DAYS // No more than N shifts in any rolling 7 days
+      // Apply hard constraints.
+      // When allowConsecutiveShifts is false (default), consecutive shifts are blocked.
+      // When true, admin has disabled this protection and consecutive shifts are freely allowed.
+      let eligible = doctors.filter(doc =>
+        !unavailable.includes(doc.id) &&
+        (allowConsecutiveShifts || stats[doc.id].lastWorkedDay !== day - 1) &&
+        getRecentShifts(doc.id) < maxShiftsPer7Days
       );
 
-      // Rule: Sort by Fairness Metrics (Page 3-4)
       sortByFairness(eligible);
 
-      // Fallback: if no fully eligible doctor (e.g. everyone is unavailable or at the weekly cap),
-      // relax constraints but still respect absolute LEAVE requests. We try to keep the weekly
-      // cap, but if that still yields nobody we allow breaking it to ensure someone is assigned.
+      // Fallback: if no fully eligible doctor, relax constraints progressively.
+      // Always respect absolute LEAVE. UNAVAILABLE is relaxed first, then the 7-day cap.
       if (eligible.length === 0) {
         const leaveDoctors = approvedRequests
           .filter(r => r.date === dateStr && r.type === RequestType.LEAVE)
           .map(r => r.doctorId);
 
-        let relaxedCandidates = doctors.filter(doc => 
+        // Relax: allow consecutive shifts (if the toggle was blocking them) and UNAVAILABLE,
+        // but still respect LEAVE and the 7-day rolling cap.
+        let relaxedCandidates = doctors.filter(doc =>
           !leaveDoctors.includes(doc.id) &&
-          getRecentShifts(doc.id) < MAX_SHIFTS_PER_7_DAYS
+          getRecentShifts(doc.id) < maxShiftsPer7Days
         );
 
-        // As an absolute last resort, if everyone is at the weekly cap, relax that cap but
-        // continue to respect LEAVE.
+        // Last resort: also relax the rolling 7-day cap, but continue to respect LEAVE.
         if (relaxedCandidates.length === 0) {
           relaxedCandidates = doctors.filter(doc => !leaveDoctors.includes(doc.id));
         }
+
         sortByFairness(relaxedCandidates);
         eligible = relaxedCandidates;
       }
@@ -215,10 +240,13 @@ export const RosterEngine = {
         if (isPH) stats[selected.id].holidays += sTemplate.totalHours;
         stats[selected.id].lastWorkedDay = day;
         (stats[selected.id].workedDays as number[]).push(day);
+      } else {
+        // Entire department is on approved LEAVE — flag for admin (HOD) review
+        unassignedDays.push(dateStr);
       }
     }
 
-    const report = this.validateFairness(doctors, stats, shifts, config);
+    const report = this.validateFairness(doctors, stats, shifts, approvedRequests, unassignedDays, config);
 
     return {
       roster: {
@@ -234,12 +262,15 @@ export const RosterEngine = {
   },
 
   /**
-   * Validates roster against the discrepancy rules on Page 3.
+   * Validates roster fairness and generates warnings for admin/HOD review.
+   * Checks: hour discrepancy, weekend imbalance, unassigned days, and weekend off-request conflicts.
    */
   validateFairness(
     doctors: User[],
     stats: any,
     shifts: ScheduledShift[],
+    approvedRequests: Request[],
+    unassignedDays: string[],
     config?: { maxHourDiff?: number; maxWeekendDiff?: number }
   ): FairnessReport {
     const warnings: string[] = [];
@@ -267,8 +298,7 @@ export const RosterEngine = {
     if (hours.length > 0) {
       const max = Math.max(...hours);
       const min = Math.min(...hours);
-      
-      // Page 3 Rule: ≤1 regular shift difference (avg shift is 16-24h)
+
       if (max - min > maxHourDiff) {
         warnings.push(`Hour Discrepancy: ${max - min}h difference exceeds the fair limit of ≤1 shift (${maxHourDiff}h).`);
       }
@@ -279,10 +309,33 @@ export const RosterEngine = {
       }
     }
 
+    // Flag unassigned days for HOD review
+    for (const dateStr of unassignedDays) {
+      warnings.push(`Unassigned Day: ${dateStr} — all doctors are on approved leave. Manual assignment required.`);
+    }
+
+    // Detect weekend off-request conflicts: multiple doctors requested the same weekend day off.
+    // Flag these so admin can present the conflict to the doctors involved.
+    const weekendOffByDate: Record<string, string[]> = {};
+    for (const req of approvedRequests) {
+      if (req.type !== RequestType.LEAVE && req.type !== RequestType.UNAVAILABLE) continue;
+      const d = new Date(req.date);
+      if (d.getDay() === 0 || d.getDay() === 6) {
+        if (!weekendOffByDate[req.date]) weekendOffByDate[req.date] = [];
+        weekendOffByDate[req.date].push(req.doctorId);
+      }
+    }
+    for (const [date, doctorIds] of Object.entries(weekendOffByDate)) {
+      if (doctorIds.length > 1) {
+        warnings.push(`Weekend Conflict on ${date}: ${doctorIds.length} doctors requested the same day off — admin review required.`);
+      }
+    }
+
     return {
       isFair: warnings.length === 0,
       warnings,
-      metrics
+      metrics,
+      unassignedDays
     };
   }
 };
