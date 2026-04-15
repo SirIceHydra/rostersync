@@ -7,8 +7,7 @@ import {
   RequestType,
   RequestStatus,
   FairnessReport,
-  FairnessMetric,
-  ShiftTemplate
+  FairnessMetric
 } from './types';
 import { SHIFT_TEMPLATES } from './constants';
 import { getSAPublicHolidays } from './publicHolidays';
@@ -25,18 +24,6 @@ function getMonthsActive(startDate: number | undefined, currentMonth: number, cu
   return Math.max(0, monthsDiff);
 }
 
-/**
- * Calculate expected cumulative hours for a doctor based on months active.
- * New joiners should have proportionally lower expected hours.
- */
-function getExpectedCumulativeHours(
-  avgMonthlyHours: number,
-  monthsActive: number,
-  maxMonthsTracked: number = 6
-): number {
-  const effectiveMonths = Math.min(monthsActive, maxMonthsTracked);
-  return avgMonthlyHours * effectiveMonths;
-}
 
 export const RosterEngine = {
   /**
@@ -76,38 +63,61 @@ export const RosterEngine = {
     // 1. Filter Approved Requests
     const approvedRequests = requests.filter(r => r.status === RequestStatus.APPROVED);
 
-    // Calculate average cumulative hours for fairness baseline (for new joiner handling)
+    // Calculate average cumulative stats across doctors who have any history.
+    // Used as a fairness baseline for new/effectively-new joiners.
     const activeDoctors = doctors.filter(d => (d.cumulativeTotalHours ?? 0) > 0);
     const avgCumulativeHours = activeDoctors.length > 0
       ? activeDoctors.reduce((sum, d) => sum + (d.cumulativeTotalHours ?? 0), 0) / activeDoctors.length
       : 0;
+    const avgCumulativeWeekends = activeDoctors.length > 0
+      ? activeDoctors.reduce((sum, d) => sum + (d.cumulativeWeekendShifts ?? 0), 0) / activeDoctors.length
+      : 0;
     const avgMonthlyHours = avgCumulativeHours > 0 ? avgCumulativeHours / 3 : 400; // ~3 months average
+
+    // Per-month shift cap: no doctor can receive more than fair share + 1 shifts.
+    // This prevents a single doctor from dominating even when they consistently rank first in the sort.
+    const maxShiftsThisMonth = Math.ceil(daysInMonth / Math.max(doctors.length, 1)) + 1;
 
     // 2. Track assignments for constraints/fairness
     // Include cumulative stats from previous months for cross-month fairness
     const stats = doctors.reduce((acc, doc) => {
       const monthsActive = getMonthsActive(doc.startDate, month, year);
+      const actualCumulative = doc.cumulativeTotalHours ?? 0;
+      const actualCumulativeWeekends = doc.cumulativeWeekendShifts ?? 0;
+
+      // Bug fix: also catch doctors who have been in the system for months but somehow have
+      // zero cumulative hours (e.g. joined but no roster was published while they were active).
+      // Without this, they would win every priority sort and take all shifts.
+      const isEffectivelyNew = actualCumulative === 0 && avgCumulativeHours > 50;
 
       // New joiner protection is bypassed when admin sets workloadStartMode to IMMEDIATE
-      const isNewJoiner = monthsActive < 2 && doc.workloadStartMode !== 'IMMEDIATE';
+      const isNewJoiner = (monthsActive < 2 || isEffectivelyNew) && doc.workloadStartMode !== 'IMMEDIATE';
 
-      // For new joiners, calculate their "fair baseline" to not penalize them.
-      // They should catch up gradually, not be overworked immediately.
-      const expectedHours = getExpectedCumulativeHours(avgMonthlyHours, monthsActive);
-      const actualCumulative = doc.cumulativeTotalHours ?? 0;
+      // Compute effective cumulative hours and weekends for priority sorting.
+      // For new/effectively-new joiners: raise floor to ~80% of group average so they compete
+      // normally and get a slight catch-up bonus — but NOT all shifts in one month.
+      // For veterans: cap the compensation floor so they don't receive all shifts in one month
+      // just because they happened to have fewer hours than peers.
+      let effectiveCumulative: number;
+      let effectiveCumulativeWeekends: number;
 
-      // "Effective cumulative" — for new joiners, use their proportional expected.
-      // This prevents them from being assigned all shifts just because they have fewer hours.
-      const effectiveCumulative = isNewJoiner
-        ? Math.max(actualCumulative, expectedHours * 0.8) // Allow slight catch-up
-        : actualCumulative;
+      if (isNewJoiner) {
+        effectiveCumulative = Math.max(actualCumulative, avgCumulativeHours * 0.8);
+        effectiveCumulativeWeekends = Math.max(actualCumulativeWeekends, Math.floor(avgCumulativeWeekends * 0.8));
+      } else {
+        // Veterans: floor at (group average − one month) so the maximum gap closed per month
+        // is roughly one month's worth of shifts, not the entire lifetime deficit.
+        const maxCompensationFloor = Math.max(0, avgCumulativeHours - avgMonthlyHours);
+        effectiveCumulative = Math.max(actualCumulative, maxCompensationFloor);
+        effectiveCumulativeWeekends = actualCumulativeWeekends;
+      }
 
       acc[doc.id] = {
-        totalHours: 0,                                    // This month's hours
-        cumulativeHours: effectiveCumulative,             // Effective cumulative for fairness
-        actualCumulativeHours: actualCumulative,          // Real cumulative for reporting
-        weekends: 0,                                      // This month's weekends
-        cumulativeWeekends: doc.cumulativeWeekendShifts ?? 0, // Historical weekends
+        totalHours: 0,                                        // This month's hours
+        cumulativeHours: effectiveCumulative,                 // Effective cumulative for fairness
+        actualCumulativeHours: actualCumulative,              // Real cumulative for reporting
+        weekends: 0,                                          // This month's weekends
+        cumulativeWeekends: effectiveCumulativeWeekends,      // Effective historical weekends
         holidays: doc.cumulativeHolidayHours,
         lastWorkedDay: -2,
         monthsActive,
@@ -190,32 +200,44 @@ export const RosterEngine = {
         });
       };
 
+      const monthlyShiftCount = (doc: User) => (stats[doc.id].workedDays as number[]).length;
+
       // Apply hard constraints.
       // When allowConsecutiveShifts is false (default), consecutive shifts are blocked.
       // When true, admin has disabled this protection and consecutive shifts are freely allowed.
+      // The per-month cap (maxShiftsThisMonth) prevents any single doctor from dominating.
       let eligible = doctors.filter(doc =>
         !unavailable.includes(doc.id) &&
         (allowConsecutiveShifts || stats[doc.id].lastWorkedDay !== day - 1) &&
-        getRecentShifts(doc.id) < maxShiftsPer7Days
+        getRecentShifts(doc.id) < maxShiftsPer7Days &&
+        monthlyShiftCount(doc) < maxShiftsThisMonth
       );
 
       sortByFairness(eligible);
 
       // Fallback: if no fully eligible doctor, relax constraints progressively.
-      // Always respect absolute LEAVE. UNAVAILABLE is relaxed first, then the 7-day cap.
+      // Always respect absolute LEAVE. UNAVAILABLE is relaxed first, then other caps.
       if (eligible.length === 0) {
         const leaveDoctors = approvedRequests
           .filter(r => r.date === dateStr && r.type === RequestType.LEAVE)
           .map(r => r.doctorId);
 
-        // Relax: allow consecutive shifts (if the toggle was blocking them) and UNAVAILABLE,
-        // but still respect LEAVE and the 7-day rolling cap.
+        // Level 1: allow consecutive shifts + UNAVAILABLE, keep rolling 7-day cap + monthly cap
         let relaxedCandidates = doctors.filter(doc =>
           !leaveDoctors.includes(doc.id) &&
-          getRecentShifts(doc.id) < maxShiftsPer7Days
+          getRecentShifts(doc.id) < maxShiftsPer7Days &&
+          monthlyShiftCount(doc) < maxShiftsThisMonth
         );
 
-        // Last resort: also relax the rolling 7-day cap, but continue to respect LEAVE.
+        // Level 2: also relax rolling 7-day cap, keep monthly cap
+        if (relaxedCandidates.length === 0) {
+          relaxedCandidates = doctors.filter(doc =>
+            !leaveDoctors.includes(doc.id) &&
+            monthlyShiftCount(doc) < maxShiftsThisMonth
+          );
+        }
+
+        // Last resort: relax all caps — only respect absolute LEAVE
         if (relaxedCandidates.length === 0) {
           relaxedCandidates = doctors.filter(doc => !leaveDoctors.includes(doc.id));
         }
