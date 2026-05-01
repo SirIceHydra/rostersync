@@ -31,13 +31,16 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Menu
 } from 'lucide-react';
 
 // --- Production UI Components ---
 import { Card } from './src/components/Card';
 import { Button } from './src/components/Button';
 import { Badge } from './src/components/Badge';
+
+type AppShellView = 'DASHBOARD' | 'ROSTER' | 'ANALYTICS' | 'REQUESTS' | 'DOCTORS' | 'TUNING';
 
 // --- Join Department (user logged in but has no department) ---
 function JoinDepartmentView(props: {
@@ -75,10 +78,13 @@ function JoinDepartmentView(props: {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md space-y-6">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden" style={{background: 'linear-gradient(160deg, #FAF8F6 0%, #FFF3E8 50%, #FAF8F6 100%)'}}>
+      <div className="hs-blob w-32 h-32 -top-8 -right-8" style={{background: '#4A90D9', animationDelay: '0s'}} />
+      <div className="hs-blob w-20 h-20 bottom-24 -left-6" style={{background: '#F47C20', animationDelay: '2s'}} />
+
+      <div className="w-full max-w-md space-y-6 relative z-10">
         <div className="text-center">
-          <div className="w-14 h-14 bg-indigo-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4">
+          <div className="w-16 h-16 rounded-full mx-auto flex items-center justify-center shadow-lg mb-4" style={{background: '#F47C20'}}>
             <Building2 className="text-white" size={28} />
           </div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">Join a department</h1>
@@ -89,12 +95,12 @@ function JoinDepartmentView(props: {
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700 font-bold">
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-sm text-rose-700 font-bold">
                 {error}
               </div>
             )}
             {success && !error && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-bold">
+              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-sm text-emerald-700 font-bold">
                 {success}
               </div>
             )}
@@ -106,13 +112,13 @@ function JoinDepartmentView(props: {
                 type="text"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold uppercase tracking-widest outline-none ring-indigo-500 focus:ring-2"
+                className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 text-sm font-bold uppercase tracking-widest outline-none"
                 placeholder="e.g. ABC12XYZ"
                 maxLength={12}
                 autoFocus
               />
             </div>
-            <Button type="submit" variant="primary" className="w-full py-3" disabled={loading}>
+            <Button type="submit" variant="primary" className="w-full py-3.5" disabled={loading}>
               {loading ? 'Joining…' : 'Join department'}
             </Button>
           </form>
@@ -134,7 +140,7 @@ export default function App() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [newDepartmentCode, setNewDepartmentCode] = useState<string | null>(null); // Shown after admin register
   const [joinRequests, setJoinRequests] = useState<{ id: string; userId: string; email: string; name: string; createdAt: number }[]>([]);
-  const [view, setView] = useState<'DASHBOARD' | 'ROSTER' | 'ANALYTICS' | 'REQUESTS' | 'DOCTORS' | 'TUNING'>('DASHBOARD');
+  const [view, setView] = useState<AppShellView>('DASHBOARD');
   const [roster, setRoster] = useState<Roster | null>(null);
   const [requests, setRequests] = useState<Request[]>([]);
   const [doctors, setDoctors] = useState<User[]>([]);
@@ -144,6 +150,25 @@ export default function App() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [selectedMonthOffset, setSelectedMonthOffset] = useState<0 | 1>(0); // 0 = this month, 1 = next month
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileNavOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileNavOpen]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileNavOpen]);
 
   // Check if backend is available and load user
   useEffect(() => {
@@ -530,8 +555,34 @@ export default function App() {
 
   const currentDepartment = departments.find(d => d.id === api.getDepartmentId()) || departments[0];
 
+  const isDeptAdmin = currentUser.role === Role.ADMIN;
+  /** Space for fixed bottom bar (3 shortcuts on mobile, full bar md+) */
+  const mainBottomPad = 'pb-[calc(5.35rem+env(safe-area-inset-bottom,0px))]';
+
+  const goNav = (v: AppShellView) => {
+    setView(v);
+    setMobileNavOpen(false);
+    setDepartmentDropdownOpen(false);
+  };
+
+  const drawerLinks: { view: AppShellView; label: string; Icon: typeof History }[] = isDeptAdmin
+    ? [
+        { view: 'DASHBOARD', label: 'Home', Icon: History },
+        { view: 'ROSTER', label: 'Roster', Icon: Calendar },
+        { view: 'ANALYTICS', label: 'Metrics', Icon: BarChart3 },
+        { view: 'REQUESTS', label: 'Requests', Icon: AlertCircle },
+        { view: 'DOCTORS', label: 'Staff', Icon: Users },
+        { view: 'TUNING', label: 'Balance', Icon: SlidersHorizontal },
+      ]
+    : [
+        { view: 'DASHBOARD', label: 'Home', Icon: History },
+        { view: 'ROSTER', label: 'Roster', Icon: Calendar },
+        { view: 'ANALYTICS', label: 'Metrics', Icon: BarChart3 },
+        { view: 'REQUESTS', label: 'Requests', Icon: AlertCircle },
+      ];
+
   return (
-    <div className="min-h-dvh min-h-screen bg-slate-50 flex flex-col font-sans select-none pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))]">
+    <div className={`min-h-dvh min-h-screen bg-slate-50 flex flex-col font-sans select-none ${mainBottomPad}`}>
       {apiError && (
         <div className="bg-amber-50 border-b border-amber-200 p-3 text-center">
           <p className="text-xs font-bold text-amber-700">{apiError}</p>
@@ -557,9 +608,19 @@ export default function App() {
           </button>
         </div>
       )}
-      <header className="bg-white border-b border-slate-200 p-4 sticky top-0 z-40 flex items-center justify-between safe-top no-print">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-sm shrink-0">
+      <header className="bg-white border-b border-slate-200 p-4 sticky top-0 z-40 flex items-center justify-between gap-2 safe-top no-print" style={{boxShadow: '0 2px 16px rgba(244,124,32,0.06)'}}>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <button
+            type="button"
+            className="md:hidden shrink-0 -ml-1 p-2.5 rounded-2xl text-slate-800 hover:bg-slate-100 active:bg-slate-200 touch-manipulation transition-colors"
+            aria-expanded={mobileNavOpen}
+            aria-controls="mobile-nav-drawer"
+            aria-label="Open navigation menu"
+            onClick={() => setMobileNavOpen(true)}
+          >
+            <Menu size={22} strokeWidth={2.25} aria-hidden />
+          </button>
+          <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center shadow-sm shrink-0">
             <ShieldCheck className="text-white" size={18} />
           </div>
           <div className="min-w-0">
@@ -579,7 +640,7 @@ export default function App() {
                   {departmentDropdownOpen && (
                     <>
                       <div className="fixed inset-0 z-30" onClick={() => setDepartmentDropdownOpen(false)} aria-hidden />
-                      <div className="absolute left-0 top-full mt-1 py-1 bg-white border border-slate-200 rounded-xl shadow-lg z-40 min-w-[160px]">
+                      <div className="absolute left-0 top-full mt-1 py-1 bg-white border border-slate-200 rounded-2xl z-40 min-w-[160px]" style={{boxShadow: '0 8px 24px rgba(244,124,32,0.12)'}}>
                         {departments.map((d) => (
                           <button
                             key={d.id}
@@ -613,10 +674,59 @@ export default function App() {
             </div>
           </div>
         </div>
-        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors shrink-0">
+        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors shrink-0" type="button" aria-label="Sign out">
           <LogOut size={20} />
         </button>
       </header>
+
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-[100] md:hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-nav-drawer-title" id="mobile-nav-drawer">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/45 backdrop-blur-[2px] touch-manipulation"
+            aria-label="Close menu"
+            onClick={() => setMobileNavOpen(false)}
+          />
+          <div
+            className="absolute top-0 left-0 bottom-0 flex w-[min(88vw,300px)] flex-col bg-white shadow-2xl border-r border-slate-100"
+            style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
+              <span id="mobile-nav-drawer-title" className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                Menu
+              </span>
+              <button
+                type="button"
+                className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 touch-manipulation"
+                aria-label="Close menu"
+                onClick={() => setMobileNavOpen(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <nav className="flex-1 overflow-y-auto overscroll-contain py-2 px-2 space-y-1" aria-label="All pages">
+              {drawerLinks.map(({ view: v, label, Icon }) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => goNav(v)}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left text-sm font-black transition-colors touch-manipulation ${
+                    view === v ? 'bg-indigo-50 text-indigo-800 ring-1 ring-indigo-100' : 'text-slate-800 hover:bg-slate-50 active:bg-slate-100'
+                  }`}
+                >
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${view === v ? 'bg-white shadow-sm text-indigo-600' : 'bg-slate-100 text-slate-600'}`}>
+                    <Icon size={20} strokeWidth={2} aria-hidden />
+                  </span>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </nav>
+            <p className="px-4 py-3 text-[9px] font-bold text-slate-400 leading-relaxed border-t border-slate-100 shrink-0" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+              Home, Roster &amp; Requests stay at the bottom for quick access.
+            </p>
+          </div>
+        </div>
+      )}
 
       <main className="relative flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 sm:p-4 max-w-lg mx-auto w-full space-y-6 animate-in fade-in duration-500 pb-2">
         {loading && (
@@ -625,10 +735,10 @@ export default function App() {
             aria-busy="true"
             aria-live="polite"
           >
-            <div className="flex flex-col items-center gap-3 rounded-2xl bg-white/95 px-6 py-5 shadow-lg border border-slate-100">
-              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-              <p className="text-[11px] font-bold text-slate-600 text-center max-w-[200px]">
-                Updating roster and fairness summary…
+            <div className="flex flex-col items-center gap-3 rounded-3xl bg-white/95 px-8 py-6 border border-slate-100" style={{boxShadow: '0 8px 32px rgba(244,124,32,0.12)'}}>
+              <Loader2 className="w-9 h-9 text-indigo-600 animate-spin" />
+              <p className="text-xs font-bold text-slate-500 text-center max-w-[200px]">
+                Updating roster…
               </p>
             </div>
           </div>
@@ -713,32 +823,60 @@ export default function App() {
         )}
       </main>
 
-      <nav className="bg-white border-t border-slate-200 flex flex-nowrap justify-center items-stretch gap-0 px-0.5 py-2 sm:py-2.5 fixed bottom-0 left-0 right-0 z-50 safe-bottom shadow-[0_-4px_12px_rgba(0,0,0,0.03)] no-print w-full max-w-full overflow-x-auto scrollbar-hide">
-        <TabItem active={view === 'DASHBOARD'} icon={<History size={19} />} label="Home" onClick={() => setView('DASHBOARD')} />
-        <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => setView('ROSTER')} />
-        <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => setView('ANALYTICS')} />
-        <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => setView('REQUESTS')} />
-        {currentUser.role === Role.ADMIN && (
-          <>
+      <nav
+        className="bg-white border-t border-slate-200 fixed bottom-0 left-0 right-0 z-50 no-print w-full"
+        style={{ boxShadow: '0 -4px 24px rgba(244,124,32,0.08)' }}
+        aria-label="Quick navigation"
+      >
+        {/* Mobile: three primary shortcuts */}
+        <div className="flex md:hidden flex-row justify-around items-stretch w-full pt-2 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] border-t border-slate-100">
+          <TabItem active={view === 'DASHBOARD'} icon={<History size={20} />} label="Home" onClick={() => goNav('DASHBOARD')} />
+          <TabItem active={view === 'ROSTER'} icon={<Calendar size={20} />} label="Roster" onClick={() => goNav('ROSTER')} />
+          <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={20} />} label="Requests" onClick={() => goNav('REQUESTS')} />
+        </div>
+
+        {/* md+: full tab bar */}
+        {isDeptAdmin ? (
+          <div className="hidden md:flex flex-row justify-around items-stretch w-full py-2.5 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom,0px))] border-t border-slate-100">
+            <TabItem active={view === 'DASHBOARD'} icon={<History size={19} />} label="Home" onClick={() => setView('DASHBOARD')} />
+            <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => setView('ROSTER')} />
+            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => setView('ANALYTICS')} />
+            <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => setView('REQUESTS')} />
             <TabItem active={view === 'DOCTORS'} icon={<Users size={19} />} label="Staff" onClick={() => setView('DOCTORS')} />
             <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => setView('TUNING')} />
-          </>
+          </div>
+        ) : (
+          <div className="hidden md:flex flex-row justify-around items-stretch w-full py-2 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] border-t border-slate-100">
+            <TabItem active={view === 'DASHBOARD'} icon={<History size={19} />} label="Home" onClick={() => setView('DASHBOARD')} />
+            <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => setView('ROSTER')} />
+            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => setView('ANALYTICS')} />
+            <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => setView('REQUESTS')} />
+          </div>
         )}
       </nav>
     </div>
   );
 }
 
-const TabItem: React.FC<{ active: boolean; icon: React.ReactNode; label: string; onClick: () => void }> = ({ active, icon, label, onClick }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={`flex flex-col items-center justify-center gap-0.5 flex-1 min-w-[2.6rem] sm:min-w-0 max-w-[4.75rem] sm:max-w-none shrink-0 py-0.5 touch-manipulation transition-colors ${active ? 'text-indigo-600' : 'text-slate-400'}`}
-  >
-    <div className={`p-0.5 sm:p-1 rounded-lg shrink-0 ${active ? 'bg-indigo-50' : ''}`}>{icon}</div>
-    <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wide text-center leading-[1.1] px-0.5 line-clamp-2 break-words w-full">{label}</span>
-  </button>
-);
+const TabItem: React.FC<{
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}> = ({ active, icon, label, onClick }) => {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 max-w-[6rem] py-1 touch-manipulation transition-colors ${active ? 'text-indigo-600' : 'text-slate-400'}`}
+    >
+      <div className={`rounded-2xl shrink-0 transition-all p-1 md:p-1.5 ${active ? 'bg-indigo-50' : ''}`}>{icon}</div>
+      <span className="text-[8px] md:text-[8px] font-extrabold uppercase tracking-wide text-center leading-tight px-0.5 line-clamp-2 break-words w-full">
+        {label}
+      </span>
+    </button>
+  );
+};
 
 // --- View Sub-Components ---
 
@@ -1023,12 +1161,12 @@ const DashboardView: React.FC<{
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">Overview</h1>
           {/* Month Toggle */}
-          <div className="flex bg-slate-100 rounded-xl p-1">
+          <div className="flex bg-slate-100 rounded-2xl p-1">
             <button
               onClick={() => onChangeMonth(0)}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                selectedMonthOffset === 0 
-                  ? 'bg-white text-indigo-600 shadow-sm' 
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all ${
+                selectedMonthOffset === 0
+                  ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
@@ -1036,9 +1174,9 @@ const DashboardView: React.FC<{
             </button>
             <button
               onClick={() => onChangeMonth(1)}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                selectedMonthOffset === 1 
-                  ? 'bg-white text-indigo-600 shadow-sm' 
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all ${
+                selectedMonthOffset === 1
+                  ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
@@ -1117,7 +1255,7 @@ const DashboardView: React.FC<{
       )}
 
       {!isAdmin && (
-        <details className="rounded-2xl border border-slate-200 bg-white overflow-hidden group">
+        <details className="rounded-3xl border border-slate-200 bg-white overflow-hidden group">
           <summary className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest cursor-pointer list-none flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
             <span className="text-left">How rostering works (team members)</span>
             <ChevronDown size={14} className="text-slate-400 group-open:rotate-180 transition-transform shrink-0" aria-hidden />

@@ -5,9 +5,9 @@ export const Card: React.FC<{
   className?: string;
 }> = ({ children, className = "" }) => {
   const hasCustomBg = className.includes('bg-');
-  const baseClasses = hasCustomBg 
-    ? 'rounded-2xl shadow-sm border border-slate-200 overflow-hidden' 
-    : 'bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden';
+  const baseClasses = hasCustomBg
+    ? 'rounded-3xl shadow-sm border border-slate-200 overflow-hidden'
+    : 'bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden';
   
   return (
     <div className={`${baseClasses} ${className}`}>

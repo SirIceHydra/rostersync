@@ -6,9 +6,61 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RosterSync Medical MVP</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Nunito', 'system-ui', 'sans-serif'],
+            },
+            colors: {
+              indigo: {
+                '50':  '#FFF3E8',
+                '100': '#FFE2C4',
+                '200': '#FFC48A',
+                '300': '#FFA650',
+                '400': '#FF8C29',
+                '500': '#F47C20',
+                '600': '#F47C20',
+                '700': '#CC5C0A',
+                '800': '#A34407',
+                '900': '#7A2E00',
+              },
+              slate: {
+                '50':  '#FAF8F6',
+                '100': '#F0EDE9',
+                '200': '#E2DDD7',
+                '300': '#C8C0B8',
+                '400': '#A09488',
+                '500': '#7D7168',
+                '600': '#5C5250',
+                '700': '#3D3630',
+                '800': '#251E18',
+                '900': '#1A1410',
+              },
+              emerald: {
+                '50':  '#EDFAF5',
+                '100': '#D3F4E7',
+                '200': '#A7E8CE',
+                '600': '#27A06A',
+                '700': '#1E8055',
+              },
+              rose: {
+                '50':  '#FFF0EE',
+                '100': '#FFD8D2',
+                '200': '#FFB0A5',
+                '500': '#FF6B55',
+                '600': '#E5503A',
+                '700': '#CC3825',
+              },
+            }
+          }
+        }
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Nunito', system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
         .no-print { display: block; }
         @media print {
             .no-print { display: none !important; }
@@ -30,7 +82,7 @@
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-slate-50 text-slate-900 antialiased">
+<body class="bg-slate-50 text-slate-900 antialiased font-sans">
     <div id="root"></div>
 <script type="module" src="/index.tsx"></script>
 </body>

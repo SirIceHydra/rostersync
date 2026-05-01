@@ -1,79 +1,167 @@
-/* RosterSync Medical MVP - Global Styles */
+/* RosterSync — Headspace-inspired Design System */
 
-/* Print styles are in index.html */
+/* ── Custom properties ──────────────────────────────────── */
+:root {
+  --hs-orange:        #F47C20;
+  --hs-orange-dark:   #CC5C0A;
+  --hs-orange-light:  #FFF3E8;
+  --hs-orange-mid:    #FFE2C4;
+  --hs-bg:            #FAF8F6;
+  --hs-card-shadow:   0 2px 24px rgba(244, 124, 32, 0.07);
+  --hs-warm-border:   #E2DDD7;
+  --transition-calm:  350ms cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-/* Scrollbar customization */
+/* ── Font ───────────────────────────────────────────────── */
+body, button, input, select, textarea {
+  font-family: 'Nunito', system-ui, sans-serif;
+}
+
+/* ── Background overrides ───────────────────────────────── */
+/* These ensure the warm palette even if the Tailwind CDN
+   config hasn't picked up yet. */
+body,
+.bg-slate-50 { background-color: var(--hs-bg); }
+.bg-slate-100 { background-color: #F0EDE9; }
+.bg-slate-200 { background-color: #E2DDD7; }
+
+/* ── Indigo → Headspace Orange ──────────────────────────── */
+.bg-indigo-600                      { background-color: var(--hs-orange); }
+.bg-indigo-700                      { background-color: var(--hs-orange-dark); }
+.bg-indigo-50                       { background-color: var(--hs-orange-light); }
+.bg-indigo-100                      { background-color: var(--hs-orange-mid); }
+.hover\:bg-indigo-700:hover         { background-color: var(--hs-orange-dark); }
+.hover\:bg-indigo-500\/95:hover     { background-color: rgba(244,124,32,.95); }
+.hover\:bg-indigo-500:hover         { background-color: #F47C20; }
+.text-indigo-600                    { color: var(--hs-orange); }
+.text-indigo-700                    { color: var(--hs-orange-dark); }
+.text-indigo-800                    { color: #993E00; }
+.text-indigo-400                    { color: #FF9233; }
+.border-indigo-100                  { border-color: var(--hs-orange-mid); }
+.border-indigo-200                  { border-color: #FFC48A; }
+.hover\:text-indigo-600:hover       { color: var(--hs-orange); }
+.hover\:border-indigo-200:hover     { border-color: #FFC48A; }
+.ring-indigo-500,
+.focus\:ring-indigo-500:focus       { --tw-ring-color: var(--hs-orange); }
+.focus\:ring-2:focus                { --tw-ring-color: var(--hs-orange); }
+.shadow-indigo-100\/50              { --tw-shadow-color: rgba(255,227,184,.5); }
+.focus-visible\:ring-offset-indigo-600 { --tw-ring-offset-color: var(--hs-orange); }
+
+/* Department code badge (uses indigo-50 bg + indigo-700 text inline) */
+.bg-indigo-50.text-indigo-700 {
+  background-color: var(--hs-orange-light);
+  color: var(--hs-orange-dark);
+}
+
+/* ── Warmer slate text ──────────────────────────────────── */
+.text-slate-900 { color: #1A1410; }
+.text-slate-700 { color: #3D3630; }
+.text-slate-600 { color: #5C5250; }
+.text-slate-500 { color: #7D7168; }
+.text-slate-400 { color: #A09488; }
+.border-slate-200 { border-color: #E2DDD7; }
+.border-slate-100 { border-color: #F0EDE9; }
+.border-slate-50  { border-color: #FAF8F6; }
+.bg-slate-50.text-slate-600 { color: #5C5250; } /* offline banner */
+
+/* ── Inputs — rounder, warmer ───────────────────────────── */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  border-radius: 1rem !important;
+  transition: box-shadow var(--transition-calm), border-color var(--transition-calm);
+}
+input:not([type="checkbox"]):not([type="radio"]):focus,
+select:focus,
+textarea:focus {
+  box-shadow: 0 0 0 3px rgba(244,124,32,.18) !important;
+  border-color: #F47C20 !important;
+  outline: none;
+}
+
+/* ── Cards — warmer shadow ──────────────────────────────── */
+.shadow-sm {
+  box-shadow: 0 2px 16px rgba(244,124,32,.06), 0 1px 4px rgba(0,0,0,.04);
+}
+.shadow-lg {
+  box-shadow: 0 8px 32px rgba(244,124,32,.1), 0 2px 8px rgba(0,0,0,.06);
+}
+.hover\:shadow-md:hover {
+  box-shadow: 0 4px 24px rgba(244,124,32,.12), 0 2px 8px rgba(0,0,0,.05) !important;
+}
+
+/* ── Bottom nav — warm glow ─────────────────────────────── */
+.shadow-\[0_-4px_12px_rgba\(0\2c 0\2c 0\2c 0\.03\)\] {
+  box-shadow: 0 -4px 24px rgba(244,124,32,.08) !important;
+}
+
+/* ── Amber warning banner ───────────────────────────────── */
+.bg-amber-50  { background-color: #FFFBEB; }
+.text-amber-700 { color: #B45309; }
+.border-amber-200 { border-color: #FDE68A; }
+.text-amber-500   { color: #F59E0B; }
+.text-amber-600   { color: #D97706; }
+
+/* ── Scrollbar ──────────────────────────────────────────── */
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
 
-/* Safe area for mobile devices */
-.safe-top {
-  padding-top: env(safe-area-inset-top);
+/* ── Safe area ──────────────────────────────────────────── */
+.safe-top    { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+/* ── Touch ──────────────────────────────────────────────── */
+.touch-manipulation { touch-action: manipulation; }
+.touch-pan-y        { touch-action: pan-y; }
+
+/* ── Transitions — calmer, slower ──────────────────────── */
+.transition-all, .transition-colors {
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.touch-manipulation {
-  touch-action: manipulation;
-}
-
-.touch-pan-y {
-  touch-action: pan-y;
-}
-
-/* Animation utilities */
+/* ── Animations ─────────────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
-
 @keyframes slideInFromTop {
-  from { 
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to { 
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes zoomIn {
-  from { 
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to { 
-    opacity: 1;
-    transform: scale(1);
-  }
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50%       { transform: translateY(-8px) rotate(3deg); }
 }
 
-.animate-in {
-  animation-duration: 300ms;
-  animation-fill-mode: both;
+.animate-in { animation-duration: 450ms; animation-fill-mode: both; }
+.fade-in            { animation-name: fadeIn; }
+.slide-in-from-top-4 { animation-name: slideInFromTop; }
+.slide-in-from-top-2 { animation-name: slideInFromTop; }
+.zoom-in-95         { animation-name: zoomIn; }
+
+/* ── Decorative blobs (used on login page) ──────────────── */
+.hs-blob {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.55;
+  pointer-events: none;
+  animation: float 6s ease-in-out infinite;
 }
 
-.fade-in {
-  animation-name: fadeIn;
-}
+/* ── Details/summary accordion ─────────────────────────── */
+details > summary { user-select: none; }
+details[open] > summary .chevron-down { transform: rotate(180deg); }
 
-.slide-in-from-top-4 {
-  animation-name: slideInFromTop;
-}
-
-.slide-in-from-top-2 {
-  animation-name: slideInFromTop;
-}
-
-.zoom-in-95 {
-  animation-name: zoomIn;
-}
+/* ── Loading spinner colour fix ─────────────────────────── */
+.animate-spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
