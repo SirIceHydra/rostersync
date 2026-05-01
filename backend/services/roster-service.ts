@@ -4,6 +4,10 @@ import { Database } from '../shared/database.js';
 import { authMiddleware, adminOnly, requireDepartment } from '../shared/auth.js';
 import { RosterEngine } from '../shared/rosterEngine.js';
 import { getSAPublicHolidays } from '../shared/publicHolidays.js';
+import {
+  getPublishedYearRollupForDepartment,
+  normalizeFairnessHistoryMode,
+} from '../shared/fairnessRollup.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -46,6 +50,12 @@ app.get('/api/rosters/:year/:month', authMiddleware, withDept, async (req, res) 
     );
 
     if (!roster) {
+      return res.json(null);
+    }
+
+    const user = (req as any).user as { role?: string } | undefined;
+    if (roster.status === 'DRAFT' && user?.role !== 'ADMIN') {
+      // Drafts are admin-only until publish — doctors see no roster for this month.
       return res.json(null);
     }
 
@@ -136,7 +146,8 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
               weekend_diff_limit as weekendLimit,
               max_shifts_per_7_days as maxShiftsPer7Days,
               allow_consecutive_shifts as allowConsecutiveShifts,
-              min_rest_days as minRestDays
+              min_rest_days as minRestDays,
+              fairness_history_mode as fairnessHistoryMode
        FROM fairness_settings WHERE department_id = ?`,
       [departmentId]
     ).catch(() => null);
@@ -145,6 +156,27 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
     const resolvedMinRestDays = (settings?.minRestDays ?? null) !== null
       ? settings.minRestDays
       : (settings?.allowConsecutiveShifts === 1 ? 0 : 1);
+
+    const historyMode = normalizeFairnessHistoryMode(
+      settings?.fairnessHistoryMode as string | undefined
+    );
+    if (historyMode === 'CALENDAR_YEAR') {
+      const yearRollup = await getPublishedYearRollupForDepartment(
+        db,
+        departmentId,
+        targetYear
+      );
+      for (const d of doctorsFormatted) {
+        const r = yearRollup.get(d.id) ?? {
+          totalHours: 0,
+          weekendShifts: 0,
+          holidayHours: 0,
+        };
+        d.cumulativeTotalHours = r.totalHours;
+        d.cumulativeWeekendShifts = r.weekendShifts;
+        d.cumulativeHolidayHours = r.holidayHours;
+      }
+    }
 
     // Generate roster using current fairness configuration
     const { roster, report } = RosterEngine.generate(
@@ -293,9 +325,10 @@ app.post('/api/rosters/:rosterId/publish', authMiddleware, withDept, adminOnly, 
 // Sync cumulative hours from all published rosters (admin only; cumulative is global per user)
 app.post('/api/rosters/sync-cumulative', authMiddleware, withDept, adminOnly, async (req, res) => {
   try {
+    const departmentId = (req as any).departmentId;
     const published = await db.all(
-      'SELECT id FROM rosters WHERE status = ? ORDER BY year, month',
-      ['FINAL']
+      'SELECT id FROM rosters WHERE department_id = ? AND status = ? ORDER BY year, month',
+      [departmentId, 'FINAL']
     );
 
     const doctorTotals: Record<string, { hours: number; weekends: number; phHours: number }> = {};
@@ -330,9 +363,12 @@ app.post('/api/rosters/sync-cumulative', authMiddleware, withDept, adminOnly, as
       );
     }
 
-    // Reset doctors who have no published shifts (e.g. new joiners)
+    // Reset doctors in this department who have no published shifts in this department
     const allDoctorIds = await db.all(
-      `SELECT id FROM users WHERE role IN ('DOCTOR', 'ADMIN')`
+      `SELECT u.id FROM users u
+       INNER JOIN user_departments ud ON ud.user_id = u.id AND ud.department_id = ?
+       WHERE u.role IN ('DOCTOR', 'ADMIN')`,
+      [departmentId]
     );
     for (const { id } of allDoctorIds) {
       if (!doctorTotals[id]) {

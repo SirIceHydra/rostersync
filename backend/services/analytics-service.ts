@@ -3,6 +3,10 @@ import cors from 'cors';
 import { Database } from '../shared/database.js';
 import { authMiddleware, adminOnly, requireDepartment } from '../shared/auth.js';
 import { RosterEngine } from '../shared/rosterEngine.js';
+import {
+  getPublishedYearRollupForDepartment,
+  normalizeFairnessHistoryMode,
+} from '../shared/fairnessRollup.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -36,15 +40,37 @@ app.get('/api/analytics/roster/:year/:month/fairness', authMiddleware, withDept,
       return res.status(404).json({ error: 'Roster not found' });
     }
 
+    const user = (req as any).user as { role?: string } | undefined;
+    if (roster.status === 'DRAFT' && user?.role !== 'ADMIN') {
+      return res.status(404).json({ error: 'Roster not found' });
+    }
+
     // Get shifts
     const shifts = await db.all(
       'SELECT * FROM shifts WHERE roster_id = ?',
       [roster.id]
     );
 
+    const fairnessRow = await db
+      .get(
+        `SELECT fairness_history_mode as fairnessHistoryMode FROM fairness_settings WHERE department_id = ?`,
+        [departmentId]
+      )
+      .catch(() => null);
+    const historyMode = normalizeFairnessHistoryMode(
+      fairnessRow?.fairnessHistoryMode as string | undefined
+    );
+    const yearRollup =
+      historyMode === 'CALENDAR_YEAR'
+        ? await getPublishedYearRollupForDepartment(db, departmentId, year, {
+            excludeRosterId: roster.id as string,
+          })
+        : null;
+
     // Get doctors in this department
     const doctors = await db.all(
-      `SELECT u.id, u.email, u.name, u.role, u.firm, u.cumulative_holiday_hours 
+      `SELECT u.id, u.email, u.name, u.role, u.firm,
+              u.cumulative_holiday_hours, u.cumulative_total_hours, u.cumulative_weekend_shifts
        FROM users u
        INNER JOIN user_departments ud ON ud.user_id = u.id AND ud.department_id = ?
        WHERE u.role IN ('DOCTOR', 'ADMIN')`,
@@ -58,15 +84,35 @@ app.get('/api/analytics/roster/:year/:month/fairness', authMiddleware, withDept,
       [departmentId]
     );
 
-    // Convert to expected format
-    const doctorsFormatted = doctors.map(d => ({
-      id: d.id,
-      email: d.email,
-      name: d.name,
-      role: d.role,
-      firm: d.firm,
-      cumulativeHolidayHours: d.cumulative_holiday_hours || 0
-    }));
+    const doctorsFormatted = doctors.map(d => {
+      if (historyMode === 'CALENDAR_YEAR' && yearRollup) {
+        const r = yearRollup.get(d.id) ?? {
+          totalHours: 0,
+          weekendShifts: 0,
+          holidayHours: 0,
+        };
+        return {
+          id: d.id,
+          email: d.email,
+          name: d.name,
+          role: d.role,
+          firm: d.firm,
+          cumulativeHolidayHours: r.holidayHours,
+          cumulativeTotalHours: r.totalHours,
+          cumulativeWeekendShifts: r.weekendShifts,
+        };
+      }
+      return {
+        id: d.id,
+        email: d.email,
+        name: d.name,
+        role: d.role,
+        firm: d.firm,
+        cumulativeHolidayHours: d.cumulative_holiday_hours || 0,
+        cumulativeTotalHours: d.cumulative_total_hours || 0,
+        cumulativeWeekendShifts: d.cumulative_weekend_shifts || 0,
+      };
+    });
 
     const requestsFormatted = requests.map(r => ({
       id: r.id,
@@ -153,7 +199,8 @@ app.get('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly,
               weekend_diff_limit as weekendLimit,
               max_shifts_per_7_days as maxShiftsPer7Days,
               allow_consecutive_shifts as allowConsecutiveShifts,
-              min_rest_days as minRestDays
+              min_rest_days as minRestDays,
+              fairness_history_mode as fairnessHistoryMode
        FROM fairness_settings WHERE department_id = ?`,
       [departmentId]
     );
@@ -166,7 +213,8 @@ app.get('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly,
       weekendLimit: row?.weekendLimit ?? 1,
       maxShiftsPer7Days: row?.maxShiftsPer7Days ?? 2,
       minRestDays,
-      allowConsecutiveShifts: minRestDays === 0
+      allowConsecutiveShifts: minRestDays === 0,
+      fairnessHistoryMode: normalizeFairnessHistoryMode(row?.fairnessHistoryMode as string | undefined),
     });
   } catch (error: any) {
     console.error('Get fairness settings error:', error);
@@ -178,7 +226,14 @@ app.get('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly,
 app.put('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly, async (req, res) => {
   try {
     const departmentId = (req as any).departmentId;
-    const { hourLimit, weekendLimit, maxShiftsPer7Days, minRestDays, allowConsecutiveShifts } = req.body;
+    const {
+      hourLimit,
+      weekendLimit,
+      maxShiftsPer7Days,
+      minRestDays,
+      allowConsecutiveShifts,
+      fairnessHistoryMode: fairnessHistoryModeRaw,
+    } = req.body;
 
     if (hourLimit == null || weekendLimit == null) {
       return res.status(400).json({ error: 'hourLimit and weekendLimit are required' });
@@ -189,6 +244,8 @@ app.put('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly,
       ? Math.max(0, Math.floor(minRestDays))
       : (allowConsecutiveShifts ? 0 : 1);
 
+    const resolvedHistoryMode = normalizeFairnessHistoryMode(fairnessHistoryModeRaw);
+
     const now = Date.now();
     await db.run(
       `UPDATE fairness_settings
@@ -197,6 +254,7 @@ app.put('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly,
            max_shifts_per_7_days = ?,
            allow_consecutive_shifts = ?,
            min_rest_days = ?,
+           fairness_history_mode = ?,
            updated_at = ?
        WHERE department_id = ?`,
       [
@@ -205,6 +263,7 @@ app.put('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly,
         maxShiftsPer7Days ?? 2,
         resolvedMinRestDays === 0 ? 1 : 0,
         resolvedMinRestDays,
+        resolvedHistoryMode,
         now,
         departmentId
       ]
@@ -216,7 +275,8 @@ app.put('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly,
       weekendLimit,
       maxShiftsPer7Days: maxShiftsPer7Days ?? 2,
       minRestDays: resolvedMinRestDays,
-      allowConsecutiveShifts: resolvedMinRestDays === 0
+      allowConsecutiveShifts: resolvedMinRestDays === 0,
+      fairnessHistoryMode: resolvedHistoryMode,
     });
   } catch (error: any) {
     console.error('Update fairness settings error:', error);

@@ -139,12 +139,48 @@ If not, it generates warnings for you to review.
 
 ---
 
+## How workload history works (drafts, New Year, and empty data)
+
+This section matches how the live product behaves today.
+
+### When numbers change
+
+- **Draft rosters** (generate / edit without publishing) **do not** change anyone’s long-term totals. They only affect what you see for that month on screen.
+- **Publishing** a roster **adds** that month’s hours, weekend count, and public-holiday hours onto the totals stored on each doctor’s profile. There is one running total per field, not a separate total per calendar year.
+
+### New Year and long-term use
+
+- **Nothing automatically resets on 1 January.** Total hours, total weekend shifts, and total public-holiday hours keep accumulating across years for as long as you keep publishing. That supports long-run fairness (“who has carried the team over time?”).
+- The **detailed** technical doc states that public-holiday hours are tracked **across years** (not “reset every January” in the database). If the app sometimes says “this year” next to a figure, treat that as shorthand for “what we’re showing in this screen” unless the code explicitly filters by year — the default storage is **all published history**.
+
+### Rebuild (“sync”) totals
+
+- Admins can run a **rebuild** that **replaces** those three fields with sums recomputed from **every** roster marked final in the database (organisation-wide in a typical single-hospital install). People who never appear on any published roster end up with zeros. Use this after imports or if totals were wrong before tracking existed.
+
+### Everyone starts at zero (new department or new app)
+
+- If **all** doctors have **no** published history yet, nobody gets an automatic advantage from old totals. The scheduler still fills the month using the same safety rules; ranking is naturally even until the first publish starts building history.
+
+### New doctor joins later
+
+- A new account (or new person on the team) usually has **zero** totals until their first published months. The system is designed so they are **not** stuck forever at “lowest history” in a punishing way: new-starter handling and fair-share behaviour (see earlier sections) keep early months reasonable.
+
+### Scheduling window: all-time vs this calendar year
+
+- In the app **Balance** screen, admins can choose **full history** (default) or **this calendar year only** for who is considered “ahead” or “behind” when building a draft.
+- **Publishing** still always updates the **permanent all-time** totals on each profile; nothing is deleted when a new year starts.
+- **This year only:** the scheduler sums published final rosters in the **same calendar year as the month being generated** (e.g. 2026 drafts use only 2026 published months before that draft). January therefore starts even for fairness until the first months are published.
+- **Staff / Transparency** can show both the scheduling window and the all-time line when “this year only” is selected.
+
+---
+
 ## Department admin settings (Balance page)
 
-Admins can change four department-wide rules from the in-app **Balance** screen. They are saved per department and used the next time a roster is generated or regenerated, and they decide when amber “please review” messages appear.
+Admins change department-wide rules from the in-app **Balance** screen. They are saved per department and used the next time a roster is generated or regenerated, and they decide when amber “please review” messages appear.
 
 | Setting (plain language) | What it affects |
 |--------------------------|----------------|
+| **Past work — scheduling window** | **Full history** (default): every published month counts toward who is due a lighter stretch. **This calendar year only**: only published months in the roster’s year count for fairness; older years stay visible but do not tilt the next draft. |
 | **Monthly hours spread** | Largest allowed gap between the person with the **most** on-call hours this month and the person with the **least**, in **one calendar month** only. Also caps how far the “evening out” pass can move weeknight assignments. |
 | **Weekend nights spread** | How many **extra** Saturday/Sunday on-call blocks one person may have compared with whoever has the fewest, in the same month, before a review message. |
 | **Minimum clear days between nights** | Whole calendar days off between on-call nights for the same person. Zero means back-to-back nights are allowed only for severely short-staffed teams. |

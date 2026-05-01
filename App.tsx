@@ -218,6 +218,13 @@ export default function App() {
         setRoster(null);
         setFairnessReport(null);
       }
+
+      try {
+        const doctorsData = await api.getDoctors(year);
+        setDoctors(doctorsData);
+      } catch {
+        /* keep existing doctors list */
+      }
     } catch (error: any) {
       setApiError(error.message);
       console.error('Failed to load roster:', error);
@@ -230,8 +237,9 @@ export default function App() {
     if (!useBackend) return;
     try {
       setLoading(true);
+      const initialYear = getTargetMonthYear(0).year;
       const [doctorsData, requestsData, joinReqData] = await Promise.all([
-        api.getDoctors().catch(() => []),
+        api.getDoctors(initialYear).catch(() => []),
         api.getRequests().catch(() => []),
         currentUser?.role === Role.ADMIN ? api.getJoinRequests().catch(() => ({ requests: [] })) : Promise.resolve({ requests: [] as any[] })
       ]);
@@ -523,7 +531,7 @@ export default function App() {
   const currentDepartment = departments.find(d => d.id === api.getDepartmentId()) || departments[0];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans select-none pb-20">
+    <div className="min-h-dvh min-h-screen bg-slate-50 flex flex-col font-sans select-none pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))]">
       {apiError && (
         <div className="bg-amber-50 border-b border-amber-200 p-3 text-center">
           <p className="text-xs font-bold text-amber-700">{apiError}</p>
@@ -610,7 +618,7 @@ export default function App() {
         </button>
       </header>
 
-      <main className="relative flex-1 overflow-y-auto p-4 max-w-lg mx-auto w-full space-y-6 animate-in fade-in duration-500">
+      <main className="relative flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 sm:p-4 max-w-lg mx-auto w-full space-y-6 animate-in fade-in duration-500 pb-2">
         {loading && (
           <div
             className="absolute inset-0 z-40 flex flex-col items-center justify-start pt-28 bg-white/55 backdrop-blur-[2px] transition-opacity duration-200"
@@ -700,19 +708,20 @@ export default function App() {
             report={fairnessReport}
             doctors={doctors}
             roster={roster}
+            onFairnessSettingsSaved={() => loadRosterForOffset(selectedMonthOffset)}
           />
         )}
       </main>
 
-      <nav className="bg-white border-t border-slate-200 flex justify-around items-center px-1 py-3 fixed bottom-0 left-0 right-0 z-50 safe-bottom shadow-[0_-4px_12px_rgba(0,0,0,0.03)] no-print">
-        <TabItem active={view === 'DASHBOARD'} icon={<History size={20} />} label="Home" onClick={() => setView('DASHBOARD')} />
-        <TabItem active={view === 'ROSTER'} icon={<Calendar size={20} />} label="Roster" onClick={() => setView('ROSTER')} />
-        <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={20} />} label="Metrics" onClick={() => setView('ANALYTICS')} />
-        <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={20} />} label="Requests" onClick={() => setView('REQUESTS')} />
+      <nav className="bg-white border-t border-slate-200 flex flex-nowrap justify-center items-stretch gap-0 px-0.5 py-2 sm:py-2.5 fixed bottom-0 left-0 right-0 z-50 safe-bottom shadow-[0_-4px_12px_rgba(0,0,0,0.03)] no-print w-full max-w-full overflow-x-auto scrollbar-hide">
+        <TabItem active={view === 'DASHBOARD'} icon={<History size={19} />} label="Home" onClick={() => setView('DASHBOARD')} />
+        <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => setView('ROSTER')} />
+        <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => setView('ANALYTICS')} />
+        <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => setView('REQUESTS')} />
         {currentUser.role === Role.ADMIN && (
           <>
-            <TabItem active={view === 'DOCTORS'} icon={<Users size={20} />} label="Staff" onClick={() => setView('DOCTORS')} />
-            <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={20} />} label="Balance" onClick={() => setView('TUNING')} />
+            <TabItem active={view === 'DOCTORS'} icon={<Users size={19} />} label="Staff" onClick={() => setView('DOCTORS')} />
+            <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => setView('TUNING')} />
           </>
         )}
       </nav>
@@ -721,9 +730,13 @@ export default function App() {
 }
 
 const TabItem: React.FC<{ active: boolean; icon: React.ReactNode; label: string; onClick: () => void }> = ({ active, icon, label, onClick }) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-1 w-1/5 transition-all ${active ? 'text-indigo-600' : 'text-slate-400'}`}>
-    <div className={`p-1 rounded-lg ${active ? 'bg-indigo-50' : ''}`}>{icon}</div>
-    <span className="text-[8px] font-black uppercase tracking-widest">{label}</span>
+  <button
+    type="button"
+    onClick={onClick}
+    className={`flex flex-col items-center justify-center gap-0.5 flex-1 min-w-[2.6rem] sm:min-w-0 max-w-[4.75rem] sm:max-w-none shrink-0 py-0.5 touch-manipulation transition-colors ${active ? 'text-indigo-600' : 'text-slate-400'}`}
+  >
+    <div className={`p-0.5 sm:p-1 rounded-lg shrink-0 ${active ? 'bg-indigo-50' : ''}`}>{icon}</div>
+    <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wide text-center leading-[1.1] px-0.5 line-clamp-2 break-words w-full">{label}</span>
   </button>
 );
 
@@ -803,6 +816,13 @@ function getRosterWarningsForView(
     .map(humanizeFairnessWarning);
 }
 
+/** Department fairness window (from API on doctor rows); `schedulingYear` falls back to roster year when missing. */
+function fairnessHistoryContext(doctors: User[], rosterYear?: number) {
+  const mode = doctors[0]?.fairnessHistoryMode ?? 'ALL_TIME';
+  const schedulingYear = doctors[0]?.schedulingYear ?? rosterYear;
+  return { mode, schedulingYear, isCalendarYear: mode === 'CALENDAR_YEAR' };
+}
+
 /** Compact summary next to each name in "Everyone's hours" */
 function formatHoursSummaryLine(m: { totalHours: number; weekendShifts: number; holidayHours?: number }): string {
   const wk = m.weekendShifts === 0
@@ -828,6 +848,10 @@ function buildDoctorReasoning(
   const cumHours = doc.cumulativeTotalHours ?? 0;
   const cumWeekends = doc.cumulativeWeekendShifts ?? 0;
   const cumPH = doc.cumulativeHolidayHours ?? 0;
+  const windowIsYear = doc.fairnessHistoryMode === 'CALENDAR_YEAR';
+  const hoursWindow = windowIsYear ? 'this calendar year' : 'across every published month so far';
+  const weekendWindow = windowIsYear ? 'this calendar year' : 'in the record overall';
+  const phOnRecord = windowIsYear ? 'public-holiday hours this year' : 'public-holiday hours on record';
 
   // Team mean (over doctors with any history) and median (more robust to outliers).
   const veteranCum = doctors.map(d => d.cumulativeTotalHours ?? 0).filter(v => v > 0);
@@ -875,18 +899,20 @@ function buildDoctorReasoning(
     tag = 'restingHigh';
     tagLabel = 'Lighter month (high history)';
     lines.push(
-      `They have more total on-call history than the team average. This month they get a slightly lighter share so the group evens out over time.`
+      `They have more on-call hours logged ${hoursWindow} than the team average. This month they get a slightly lighter share so the group evens out over time.`
     );
   } else if (cumHours > 0 && cumHours < avgCum * 0.95) {
     tag = 'catchingUpLow';
     tagLabel = 'Heavier month (catching up)';
     lines.push(
-      `They have less total on-call history than the team average. This month they pick up a bit more so everyone converges toward fairness.`
+      `They have fewer on-call hours logged ${hoursWindow} than the team average. This month they pick up a bit more so everyone converges toward fairness.`
     );
   } else if (cumHours > 0) {
     tag = 'normal';
     tagLabel = 'Typical share';
-    lines.push(`Their past workload is close to the team average, so this month looks like a normal share.`);
+    lines.push(
+      `Their workload ${hoursWindow} is close to the team average, so this month looks like a normal share.`
+    );
   } else {
     tag = 'normal';
     tagLabel = 'Typical share';
@@ -896,13 +922,17 @@ function buildDoctorReasoning(
   // 2. Weekend reasoning
   if (metric.weekendShifts > 0) {
     if (cumWeekends < avgCumWeekends - 1) {
-      lines.push(`They have fewer past weekend shifts than most of the team, so weekend duty tilted toward them this month.`);
+      lines.push(
+        `They have fewer weekend shifts ${weekendWindow} than most of the team, so weekend duty tilted toward them this month.`
+      );
     } else {
       lines.push(`Weekend shifts are capped so one person cannot take every Saturday or Sunday.`);
     }
   } else if (metric.weekendShifts === 0 && monthHours > 0) {
     if (cumWeekends > avgCumWeekends + 1) {
-      lines.push(`No weekend duty this month — they already carry more weekend history than average.`);
+      lines.push(
+        `No weekend duty this month — they already carry more weekend shifts ${weekendWindow} than average.`
+      );
     } else if (unavailable.some(d => {
       const dt = new Date(year, monthIdx, parseInt(d, 10));
       return dt.getDay() === 0 || dt.getDay() === 6;
@@ -914,14 +944,20 @@ function buildDoctorReasoning(
   // 3. Public holiday reasoning
   if ((metric.holidayHours ?? 0) > 0) {
     if (cumPH < avgCumPH * 0.7) {
-      lines.push(`They had fewer public-holiday hours on record than most colleagues, so they were a natural pick for a holiday shift.`);
+      lines.push(
+        `They had fewer ${phOnRecord} than most colleagues, so they were a natural pick for a holiday shift.`
+      );
     } else if (preferred.length > 0) {
       lines.push(`They asked to work specific dates, and those requests were approved — including a public holiday where it applied.`);
     } else {
       lines.push(`They are covering ${metric.holidayHours} hours on a public holiday this month.`);
     }
   } else if (cumPH > avgCumPH * 1.2) {
-    lines.push(`No public-holiday shift this month — they already have more holiday duty on record than average.`);
+    lines.push(
+      windowIsYear
+        ? `No public-holiday shift this month — they already have more holiday hours logged this year than average.`
+        : `No public-holiday shift this month — they already have more holiday duty on record than average.`
+    );
   }
 
   // 4. Approved requests (plain language)
@@ -979,6 +1015,7 @@ const DashboardView: React.FC<{
   const todayDisplay = `${fullMonthNames[today.getMonth()].toUpperCase()} ${today.getDate()}`;
   const isPublished = roster?.status === 'FINAL';
   const go = onNavigate ?? (() => {});
+  const fh = fairnessHistoryContext(doctors, warnYear);
 
   return (
     <div className="space-y-6">
@@ -1037,10 +1074,16 @@ const DashboardView: React.FC<{
               <span className="text-[10px] font-black uppercase opacity-60 tracking-widest">Active cycle</span>
               <ChevronRight size={18} className="opacity-50 group-hover:opacity-90 shrink-0" aria-hidden />
             </div>
-            <div className="mt-2">
-              <div className="text-2xl font-black">{displayMonth}</div>
-              <div className="flex items-center gap-2 mt-1">
-                 <Badge color={roster?.status === 'FINAL' ? 'green' : 'yellow'}>{roster?.status || 'EMPTY'}</Badge>
+            <div className="mt-2 min-w-0">
+              <div className="text-2xl font-black truncate">{displayMonth}</div>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <Badge color={roster?.status === 'FINAL' ? 'green' : !roster && !isAdmin ? 'slate' : 'yellow'}>
+                  {!isAdmin && !roster
+                    ? 'NOT PUBLISHED'
+                    : roster?.status === 'FINAL'
+                      ? 'FINAL'
+                      : roster?.status || 'EMPTY'}
+                </Badge>
               </div>
               <p className="text-[9px] font-bold opacity-70 mt-2">Open full calendar</p>
             </div>
@@ -1064,6 +1107,31 @@ const DashboardView: React.FC<{
           </Card>
         </button>
       </div>
+
+      {!isAdmin && !roster && !loading && (
+        <Card className="p-4 border-indigo-100 bg-indigo-50/80">
+          <p className="text-[10px] font-bold text-indigo-900 leading-relaxed">
+            <strong>No published roster for {displayMonth} yet.</strong> Draft schedules are only visible to admins until someone publishes. Shifts and team summaries for this month will show up here once it&apos;s final.
+          </p>
+        </Card>
+      )}
+
+      {!isAdmin && (
+        <details className="rounded-2xl border border-slate-200 bg-white overflow-hidden group">
+          <summary className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest cursor-pointer list-none flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+            <span className="text-left">How rostering works (team members)</span>
+            <ChevronDown size={14} className="text-slate-400 group-open:rotate-180 transition-transform shrink-0" aria-hidden />
+          </summary>
+          <div className="px-4 pb-4 pt-0 text-[10px] text-slate-600 font-bold leading-relaxed space-y-2 border-t border-slate-50">
+            <p>
+              <strong className="text-slate-800">Published vs draft:</strong> you only see a month after an admin publishes it. While it&apos;s still a draft, they can change the plan — your requests are still used when they build it.
+            </p>
+            <p>
+              <strong className="text-slate-800">“Full pace from week one”:</strong> an admin-only choice under <strong>Staff → First months on the rota</strong> for a named doctor. It tells the scheduler to treat a new colleague like an established teammate right away (no eased onboarding). Most people stay on <strong>standard</strong> pacing unless the department explicitly needs full load from month one.
+            </p>
+          </div>
+        </details>
+      )}
 
       {/* Doctor POV: My next shift + My hours this month */}
       {!isAdmin && roster && (
@@ -1135,9 +1203,18 @@ const DashboardView: React.FC<{
         >
           <Card className="p-4 bg-slate-50 border-slate-100 cursor-pointer hover:border-indigo-100 hover:shadow-md transition-all group h-full">
             <div className="flex items-start justify-between gap-2">
-              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Holiday hours this year (team)</span>
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                {fh.isCalendarYear && fh.schedulingYear != null
+                  ? `Holiday on-call — ${fh.schedulingYear} window (team)`
+                  : 'Holiday on-call — full record (team)'}
+              </span>
               <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-500 shrink-0" aria-hidden />
             </div>
+            {fh.isCalendarYear && (
+              <p className="text-[9px] font-bold text-slate-500 mt-1.5 leading-relaxed">
+                Counts published holiday duty in <strong>{fh.schedulingYear}</strong> — same basis as the scheduler. All-time lines live under <strong>Staff</strong>.
+              </p>
+            )}
             <div className="mt-2 flex flex-wrap gap-3">
               {doctors.slice(0, 8).map(d => (
                 <span key={d.id} className="text-[11px] font-bold text-slate-600">
@@ -1146,7 +1223,7 @@ const DashboardView: React.FC<{
               ))}
               {doctors.length > 8 && <span className="text-[10px] text-slate-400 font-bold">+{doctors.length - 8} more</span>}
             </div>
-            <p className="text-[9px] font-bold text-slate-400 mt-2">See full transparency view</p>
+            <p className="text-[9px] font-bold text-slate-400 mt-2">Open Transparency for the full holiday ledger</p>
           </Card>
         </button>
       )}
@@ -1246,7 +1323,8 @@ const RosterView: React.FC<{
   const CalendarView = () => {
     const fullMonthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
       'July', 'August', 'September', 'October', 'November', 'December'];
-    
+    const fh = fairnessHistoryContext(doctors, rosterYear);
+
     if (!roster) {
       return (
         <div className="space-y-4">
@@ -1255,9 +1333,16 @@ const RosterView: React.FC<{
               {fullMonthNames[rosterMonth]} {rosterYear}
             </h2>
           </div>
-          <Card className="p-12 text-center">
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">No roster generated for this month yet</p>
-            {isAdmin && <p className="text-slate-300 text-[10px] font-bold mt-2">Use "NEW DRAFT" or "REGENERATE" to create one</p>}
+          <Card className="p-8 sm:p-12 text-center">
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">
+              {isAdmin ? 'No roster generated for this month yet' : 'No published roster to show yet'}
+            </p>
+            {isAdmin && <p className="text-slate-300 text-[10px] font-bold mt-2">Use &quot;NEW DRAFT&quot; or &quot;REGENERATE&quot; to create one</p>}
+            {!isAdmin && (
+              <p className="text-slate-500 text-[10px] font-bold mt-3 normal-case max-w-sm mx-auto leading-relaxed">
+                If your admin is still working on this month, you&apos;ll see it here after they publish. Drafts stay private to admins.
+              </p>
+            )}
           </Card>
         </div>
       );
@@ -1326,12 +1411,12 @@ const RosterView: React.FC<{
         )}
 
         <Card className="overflow-hidden">
-          <div className="w-full">
-            <table className="w-full border-collapse table-fixed">
+          <div className="w-full overflow-x-auto -mx-0">
+            <table className="w-full min-w-[280px] border-collapse table-fixed">
               <thead>
                 <tr className="bg-slate-50">
                   {dayNames.map(day => (
-                    <th key={day} className="p-3 text-[10px] font-black text-slate-600 uppercase tracking-widest border-b border-slate-200 text-center">{day}</th>
+                    <th key={day} className="p-1 sm:p-2 text-[8px] sm:text-[10px] font-black text-slate-600 uppercase tracking-tight sm:tracking-widest border-b border-slate-200 text-center">{day}</th>
                   ))}
                 </tr>
               </thead>
@@ -1358,7 +1443,7 @@ const RosterView: React.FC<{
                       return (
                         <td
                           key={dayIdx}
-                          className={`p-1.5 align-top border-r border-slate-100 last:border-r-0 ${
+                          className={`p-0.5 sm:p-1.5 align-top border-r border-slate-100 last:border-r-0 min-w-0 ${
                             day < 1 || day > daysInMonth ? 'bg-slate-50' : 'bg-white'
                           } ${isToday ? 'ring-2 ring-inset ring-indigo-500' : ''} ${hasConflict ? 'bg-amber-50' : ''}`}
                         >
@@ -1377,7 +1462,7 @@ const RosterView: React.FC<{
                               </div>
                               {shift && shiftInfo && (
                                 <div
-                                  className={`p-1.5 rounded-lg text-[9px] font-bold transition-all ${
+                                  className={`p-1 sm:p-1.5 rounded-md sm:rounded-lg text-[7px] sm:text-[9px] font-bold transition-all min-w-0 overflow-hidden ${
                                     isMyShift 
                                       ? 'bg-indigo-600 text-white' 
                                       : shift.isPublicHoliday 
@@ -1386,10 +1471,14 @@ const RosterView: React.FC<{
                                   }`}
                                   title={`${getDoctorName(shift.doctorId)} — ${shiftInfo.name}, ${shiftInfo.totalHours} hrs${shift.isPublicHoliday ? ' (public holiday)' : ''}`}
                                 >
-                                  <div className="font-black leading-tight">{getDoctorName(shift.doctorId).split(' ').pop()}</div>
-                                  <div className="text-[8px] opacity-70 mt-0.5 leading-tight">{shiftInfo.name}</div>
-                                  <div className="text-[8px] opacity-55 leading-tight">{shiftInfo.totalHours} hrs</div>
-                                  {shift.isPublicHoliday && <div className="text-[7px] font-black opacity-80 mt-0.5">Holiday</div>}
+                                  <div className="font-black leading-tight truncate" title={getDoctorName(shift.doctorId)}>
+                                    {getDoctorName(shift.doctorId).split(' ').pop()}
+                                  </div>
+                                  <div className="text-[7px] sm:text-[8px] opacity-70 mt-0.5 leading-tight line-clamp-2 break-words">{shiftInfo.name}</div>
+                                  <div className="text-[7px] sm:text-[8px] opacity-55 leading-tight">{shiftInfo.totalHours}h</div>
+                                  {shift.isPublicHoliday && (
+                                    <div className="text-[6px] sm:text-[7px] font-black opacity-80 mt-0.5 truncate" title="Public holiday">PH</div>
+                                  )}
                                 </div>
                               )}
                               {!shift && day >= 1 && day <= daysInMonth && (
@@ -1429,9 +1518,26 @@ const RosterView: React.FC<{
             <div className="text-[10px] text-slate-600 font-bold space-y-2 leading-relaxed">
               <p><span className="text-indigo-700">1. Non-negotiables:</span> approved full leave always wins. Rest between shifts and how many nights someone can do in a week follow your department settings.</p>
               <p><span className="text-indigo-700">2. Weekends:</span> no one is allowed to take every weekend in a month — caps keep Saturday and Sunday duty shared.</p>
-              <p><span className="text-indigo-700">3. Who goes first:</span> honour approved &quot;prefer to work&quot; days, then balance weekend counts, then spread public-holiday duty fairly across the year, then lean toward people who have been on call less recently.</p>
+              <p>
+                <span className="text-indigo-700">3. Who goes first:</span> honour approved &quot;prefer to work&quot; days, then balance weekend counts, then spread public-holiday duty fairly, then tilt toward people who have carried{' '}
+                {fh.isCalendarYear ? (
+                  <>
+                    a lighter share <strong>in the current calendar year</strong> (see <strong>Balance</strong>; the full published record is still kept).
+                  </>
+                ) : (
+                  <>less of the load <strong>across all published months</strong>.</>
+                )}
+              </p>
               <p><span className="text-indigo-700">4. New starters:</span> they are lined up with a normal share of the load unless an admin chooses &quot;start next month&quot; or &quot;full pace from day one.&quot;</p>
-              <p><span className="text-indigo-700">5. Evening out the month:</span> if two people are far apart on weeknight hours, the scheduler may swap who covers which weekday — up to the limit you set under <strong>Balance</strong> — without removing someone&apos;s agreed &quot;prefer to work&quot; day.</p>
+              <p>
+                <span className="text-indigo-700">5. Evening out the month:</span> if two people are far apart on weeknight hours, the scheduler may swap who covers which weekday — up to the limit you set under <strong>Balance</strong> — without removing someone&apos;s agreed &quot;prefer to work&quot; day. The swap logic compares people against the team average for the{' '}
+                {fh.isCalendarYear && fh.schedulingYear != null ? (
+                  <strong>{fh.schedulingYear}</strong>
+                ) : (
+                  <>full published record</>
+                )}
+                .
+              </p>
             </div>
           </Card>
         )}
@@ -1439,9 +1545,14 @@ const RosterView: React.FC<{
         {/* Everyone's hours with per-doctor reasoning */}
         {report && report.metrics?.length > 0 && (
           <Card className="mt-4 p-4 bg-slate-50/50">
-            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+            <h4 className={`text-[10px] font-black text-slate-500 uppercase tracking-widest ${fh.isCalendarYear ? 'mb-1' : 'mb-3'}`}>
               Everyone&apos;s hours — {fullMonthNames[rosterMonth]} {rosterYear}
             </h4>
+            {fh.isCalendarYear && fh.schedulingYear != null && (
+              <p className="text-[9px] text-slate-500 font-bold mb-3 leading-relaxed">
+                Explanations use the <strong>{fh.schedulingYear}</strong> scheduling window (same as Balance). All-time totals are on <strong>Staff</strong>.
+              </p>
+            )}
             <div className="space-y-2 text-[10px] font-bold">
               {(report.metrics as any[])
                 .sort((a, b) => b.totalHours - a.totalHours)
@@ -1666,11 +1777,20 @@ const AnalyticsView: React.FC<{
           <button onClick={() => onChangeMonth(1)} className={`px-3 py-1.5 rounded-lg transition-all ${selectedMonthOffset === 1 ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Next Month</button>
         </div>
       </div>
-      <div className="py-20 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">No roster for {monthNames[monthIdx]} {yearIdx} yet — generate one first</div>
+      <div className="py-20 text-center text-slate-400 text-xs font-bold uppercase tracking-widest px-4 max-w-md mx-auto leading-relaxed">
+        No transparency data for {monthNames[monthIdx]} {yearIdx} yet.
+        <span className="block mt-3 normal-case text-[10px] font-medium text-slate-500">
+          {currentUser.role !== Role.ADMIN
+            ? 'Ask your admin to publish this month, or pick a month that’s already final.'
+            : 'Generate or publish a roster for this month first.'}
+        </span>
+      </div>
     </div>
   );
 
   const approvedRequests = requests.filter(r => r.status === RequestStatus.APPROVED);
+  const fhT = fairnessHistoryContext(doctors, viewYear);
+  const schedYear = fhT.schedulingYear ?? viewYear;
 
   return (
     <div className="space-y-6">
@@ -1704,9 +1824,26 @@ const AnalyticsView: React.FC<{
         <ol className="text-[10px] text-slate-600 font-bold space-y-1.5 leading-relaxed list-decimal pl-4">
           <li><span className="text-indigo-700">Safety first:</span> full leave is never ignored. Rest gaps and weekly caps follow your department settings.</li>
           <li><span className="text-indigo-700">Weekends:</span> monthly caps stop one person from taking every Saturday or Sunday.</li>
-          <li><span className="text-indigo-700">Fair order:</span> honour &quot;prefer to work&quot; days, respect post-call preferences where possible, balance weekend counts, spread public-holiday duty across the year, then favour people with lighter recent history.</li>
+          <li>
+            <span className="text-indigo-700">Fair order:</span> honour &quot;prefer to work&quot; days, respect post-call preferences where possible, balance weekend counts, spread public-holiday duty across the year, then tilt toward people who have carried{' '}
+            {fhT.isCalendarYear ? (
+              <>
+                a lighter share in <strong>{schedYear}</strong> (see <strong>Balance</strong> — the full published record is still kept).
+              </>
+            ) : (
+              <>less of the load <strong>across all published months</strong>.</>
+            )}
+          </li>
           <li><span className="text-indigo-700">New starters:</span> they get a normal share of the month unless an admin chooses a gentler start or a later first month.</li>
-          <li><span className="text-indigo-700">Last pass:</span> weekday swaps may nudge hours between people who are high or low versus the team average, without breaking preferred work days or approved unavailability.</li>
+          <li>
+            <span className="text-indigo-700">Last pass:</span> weekday swaps may nudge hours between people who are high or low versus the team average for the{' '}
+            {fhT.isCalendarYear ? (
+              <strong>{schedYear}</strong>
+            ) : (
+              <>full published record</>
+            )}
+            , without breaking preferred work days or approved unavailability.
+          </li>
         </ol>
       </Card>
 
@@ -1715,6 +1852,11 @@ const AnalyticsView: React.FC<{
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Workload Equity — Why each doctor got their shifts</h3>
           <Badge color="indigo">Strive for even share</Badge>
         </div>
+        {fhT.isCalendarYear && (
+          <p className="px-5 pt-4 text-[10px] text-slate-500 font-bold leading-relaxed">
+            Numbers below match the <strong>{schedYear}</strong> scheduling window (same as Balance &quot;this calendar year&quot;). All-time totals stay on the <strong>Staff</strong> screen.
+          </p>
+        )}
         <div className="p-5 space-y-3">
           {(report.metrics as any[])
             ?.slice()
@@ -1750,10 +1892,25 @@ const AnalyticsView: React.FC<{
                       <div className={`h-full transition-all duration-700 ${m.totalHours > 96 ? 'bg-amber-500' : 'bg-indigo-600'}`}
                            style={{ width: `${Math.min(100, percentage)}%` }} />
                     </div>
-                    <div className="flex gap-4 text-[9px] font-bold text-slate-500 normal-case tracking-normal mt-2">
-                      <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 bg-rose-400 rounded-full" /> Weekends this month: {m.weekendShifts}</span>
-                      <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" /> Holiday shifts: {m.holidayShifts ?? 0} ({m.holidayHours ?? 0} hrs)</span>
-                      <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 bg-slate-400 rounded-full" /> Total history: {doc.cumulativeTotalHours ?? 0} hrs, {doc.cumulativeWeekendShifts ?? 0} weekend{(doc.cumulativeWeekendShifts ?? 0) !== 1 ? 's' : ''}</span>
+                    <div className="flex flex-col gap-1 text-[9px] font-bold text-slate-500 normal-case tracking-normal mt-2">
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 bg-rose-400 rounded-full" /> Weekends this month: {m.weekendShifts}</span>
+                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" /> Holiday shifts: {m.holidayShifts ?? 0} ({m.holidayHours ?? 0} hrs)</span>
+                        <span className="flex items-center gap-1">
+                          <div className="w-1.5 h-1.5 bg-slate-400 rounded-full" />
+                          {doc.fairnessHistoryMode === 'CALENDAR_YEAR' ? (
+                            <>Published in {schedYear}: {doc.cumulativeTotalHours ?? 0} hrs, {doc.cumulativeWeekendShifts ?? 0} weekend{(doc.cumulativeWeekendShifts ?? 0) !== 1 ? 's' : ''}</>
+                          ) : (
+                            <>Total published history: {doc.cumulativeTotalHours ?? 0} hrs, {doc.cumulativeWeekendShifts ?? 0} weekend{(doc.cumulativeWeekendShifts ?? 0) !== 1 ? 's' : ''}</>
+                          )}
+                        </span>
+                      </div>
+                      {doc.fairnessHistoryMode === 'CALENDAR_YEAR' &&
+                        doc.lifetimeTotalHours !== undefined && (
+                        <span className="text-slate-400 font-semibold pl-2.5 border-l-2 border-slate-200">
+                          All-time record: {doc.lifetimeTotalHours} hrs · {doc.lifetimeWeekendShifts ?? 0} w/e
+                        </span>
+                      )}
                     </div>
                   </summary>
                   {reasoning.lines.length > 0 && (
@@ -1775,20 +1932,39 @@ const AnalyticsView: React.FC<{
       <Card>
         <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
           <h3 className="text-[10px] font-black uppercase tracking-widest">Holiday duty ledger</h3>
-          <span className="opacity-40 inline-flex" title="Who has the lightest public-holiday history this year — they are usually next in line when a holiday shift must be filled.">
+          <span
+            className="opacity-40 inline-flex"
+            title={
+              fhT.isCalendarYear
+                ? `Who has the fewest public-holiday on-call hours published in ${schedYear} — they are usually next in line when a holiday shift must be filled.`
+                : 'Who has the lightest public-holiday record overall — they are usually next in line when a holiday shift must be filled.'
+            }
+          >
             <Info size={14} />
           </span>
         </div>
         <p className="px-4 py-2 text-[10px] text-slate-500 font-bold bg-slate-50 border-b border-slate-100">
-          Public-holiday hours add up over the calendar year. When several people could cover a holiday, the scheduler leans toward those with fewer holiday hours so far.
+          {fhT.isCalendarYear ? (
+            <>
+              <strong>Scheduling window:</strong> the &quot;Published&quot; column counts holiday on-call from final rosters in{' '}
+              <strong>{schedYear}</strong> — matching what the scheduler uses. All-time totals still appear on <strong>Staff</strong>.
+            </>
+          ) : (
+            <>
+              Public-holiday on-call hours add up from every <strong>published</strong> month for the full record. When several people could cover a holiday, the scheduler leans toward those with fewer holiday hours recorded so far.
+            </>
+          )}
         </p>
-        <table className="w-full text-left">
+        <div className="overflow-x-auto">
+        <table className="w-full text-left min-w-[320px]">
           <thead className="text-[9px] font-black text-slate-400 uppercase bg-slate-50 border-b border-slate-100">
             <tr>
-              <th className="px-5 py-3">Doctor</th>
-              <th className="px-5 py-3">This month</th>
-              <th className="px-5 py-3">Year to date (hrs)</th>
-              <th className="px-5 py-3 text-right">Standing</th>
+              <th className="px-3 sm:px-5 py-3 whitespace-nowrap">Doctor</th>
+              <th className="px-3 sm:px-5 py-3 whitespace-nowrap">This month</th>
+              <th className="px-3 sm:px-5 py-3">
+                {fhT.isCalendarYear ? `Published in ${schedYear} (hrs)` : 'Published history (hrs)'}
+              </th>
+              <th className="px-3 sm:px-5 py-3 text-right whitespace-nowrap">Standing</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -1800,11 +1976,11 @@ const AnalyticsView: React.FC<{
                 const n = metric?.holidayShifts ?? 0;
                 const shiftWord = n === 1 ? 'shift' : 'shifts';
                 return (
-                  <tr key={doc.id} className="text-[11px] font-bold text-slate-700">
-                    <td className="px-5 py-4">{doc.name}</td>
-                    <td className="px-5 py-4 font-black">{n} {shiftWord} ({monthPHHours} hrs)</td>
-                    <td className="px-5 py-4 font-black">{(doc.cumulativeHolidayHours ?? 0)} hrs</td>
-                    <td className="px-5 py-4 text-right">
+                  <tr key={doc.id} className="text-[10px] sm:text-[11px] font-bold text-slate-700">
+                    <td className="px-3 sm:px-5 py-3 sm:py-4 max-w-[120px] break-words">{doc.name}</td>
+                    <td className="px-3 sm:px-5 py-3 sm:py-4 font-black whitespace-nowrap">{n} {shiftWord} ({monthPHHours} hrs)</td>
+                    <td className="px-3 sm:px-5 py-3 sm:py-4 font-black whitespace-nowrap">{(doc.cumulativeHolidayHours ?? 0)} hrs</td>
+                    <td className="px-3 sm:px-5 py-3 sm:py-4 text-right">
                       <Badge color={(doc.cumulativeHolidayHours ?? 0) === 0 ? 'green' : 'slate'}>
                         {(doc.cumulativeHolidayHours ?? 0) === 0 ? 'Highest priority' : 'In rotation'}
                       </Badge>
@@ -1814,6 +1990,7 @@ const AnalyticsView: React.FC<{
               })}
           </tbody>
         </table>
+        </div>
       </Card>
 
       <button
@@ -1835,11 +2012,17 @@ const AnalyticsView: React.FC<{
   );
 };
 
-const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null }> = ({ report, doctors, roster }) => {
+const TuningView: React.FC<{
+  report: any;
+  doctors: User[];
+  roster: Roster | null;
+  onFairnessSettingsSaved?: () => void | Promise<void>;
+}> = ({ report, doctors, roster, onFairnessSettingsSaved }) => {
   const [hourLimit, setHourLimit] = useState<number>(24);
   const [weekendLimit, setWeekendLimit] = useState<number>(1);
   const [maxShiftsPer7Days, setMaxShiftsPer7Days] = useState<number>(2);
   const [minRestDays, setMinRestDays] = useState<number>(1);
+  const [fairnessHistoryMode, setFairnessHistoryMode] = useState<'ALL_TIME' | 'CALENDAR_YEAR'>('ALL_TIME');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -1853,6 +2036,7 @@ const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null
         setWeekendLimit(settings.weekendLimit);
         setMaxShiftsPer7Days(settings.maxShiftsPer7Days ?? 2);
         setMinRestDays(settings.minRestDays ?? 1);
+        setFairnessHistoryMode(settings.fairnessHistoryMode ?? 'ALL_TIME');
       } catch (error) {
         console.warn('Could not load fairness settings, using defaults');
       } finally {
@@ -1871,9 +2055,11 @@ const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null
         weekendLimit,
         maxShiftsPer7Days,
         minRestDays,
+        fairnessHistoryMode,
       });
       setSaveMessage('Saved. The next roster you generate will use these rules.');
       setTimeout(() => setSaveMessage(null), 4000);
+      await onFairnessSettingsSaved?.();
     } catch (error: any) {
       setSaveMessage(`Could not save: ${error.message}`);
     } finally {
@@ -1907,6 +2093,8 @@ const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null
 
   const monthLabels = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const rosterPeriodLabel = roster ? `${monthLabels[roster.month]} ${roster.year}` : 'the roster month on screen';
+  const fhActive = fairnessHistoryContext(doctors, roster?.year);
+  const calendarYearExample = fhActive.schedulingYear ?? roster?.year ?? new Date().getFullYear();
 
   const hourOk = hourDiff <= hourLimit;
   const weekendOk = weekendDiff <= weekendLimit;
@@ -1917,16 +2105,61 @@ const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null
         <h1 className="text-2xl font-black text-slate-900 tracking-tight">Balance settings</h1>
         <p className="text-slate-500 text-xs font-medium mt-1 leading-relaxed">
           These controls change <strong>how strict</strong> the schedule is and <strong>when you get a heads-up</strong>. They apply the next time someone runs <strong>New draft</strong> or <strong>Regenerate</strong>.
-          The live numbers under each slider describe <strong>{rosterPeriodLabel}</strong> only — one calendar month, not year-to-date totals.
-          To set how a <strong>new colleague</strong> enters the rota (first month vs full pace), use <strong>Staff</strong> — that choice is per person, not here.
+          The live numbers under each slider describe <strong>{rosterPeriodLabel}</strong> only — one calendar month, not the published workload the scheduler uses when deciding who is ahead or behind.
+          {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
+            <> For this department that workload is currently scoped to <strong>{fhActive.schedulingYear}</strong> (see <strong>Past nights</strong> below).</>
+          ) : (
+            <> By default that workload is the <strong>full published record</strong>; you can switch to “this calendar year only” under <strong>Past nights</strong>.</>
+          )}
+          {' '}To set how a <strong>new colleague</strong> enters the rota (first month vs full pace), use <strong>Staff</strong> — that choice is per person, not here.
         </p>
       </div>
 
+      <Card className="p-5 border-indigo-100 bg-white shadow-sm">
+        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Past nights — what counts when building the next draft?</h3>
+        <p className="text-[11px] text-slate-600 leading-relaxed">
+          <strong>Publishing</strong> always adds that month to each person&apos;s <strong>permanent record</strong> (nothing is deleted). This choice only changes how much of that record the scheduler <strong>looks at</strong> when deciding who is &quot;due&quot; or &quot;owed&quot; a lighter month.
+        </p>
+        <div className="mt-4 grid gap-3">
+          <button
+            type="button"
+            onClick={() => setFairnessHistoryMode('ALL_TIME')}
+            className={`text-left p-4 rounded-xl border-2 transition-all ${
+              fairnessHistoryMode === 'ALL_TIME'
+                ? 'border-indigo-500 bg-indigo-50/80 shadow-sm'
+                : 'border-slate-100 bg-slate-50/50 hover:border-slate-200'
+            }`}
+          >
+            <div className="text-[11px] font-black text-slate-900">Full history (recommended for steady teams)</div>
+            <p className="text-[10px] text-slate-600 mt-1.5 leading-relaxed">
+              Every published month, across all years, influences the next draft. Someone who carried more in the past is more likely to get a lighter stretch now — true long-run fairness.
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFairnessHistoryMode('CALENDAR_YEAR')}
+            className={`text-left p-4 rounded-xl border-2 transition-all ${
+              fairnessHistoryMode === 'CALENDAR_YEAR'
+                ? 'border-indigo-500 bg-indigo-50/80 shadow-sm'
+                : 'border-slate-100 bg-slate-50/50 hover:border-slate-200'
+            }`}
+          >
+            <div className="text-[11px] font-black text-slate-900">This calendar year only (fresh start each January)</div>
+            <p className="text-[10px] text-slate-600 mt-1.5 leading-relaxed">
+              For rosters in <strong>{calendarYearExample}</strong>, only published months in <strong>{calendarYearExample}</strong> count toward who is ahead or behind. Last year&apos;s work stays on the record for viewing, but it won&apos;t tilt who gets the next night. In January, everyone starts even for scheduling until you publish the first month.
+            </p>
+          </button>
+        </div>
+        <p className="text-[9px] text-slate-400 font-bold mt-3">
+          Tip: switch modes anytime — save below, then regenerate. Staff and Transparency show both the scheduling window and all-time totals when &quot;this year only&quot; is on.
+        </p>
+      </Card>
+
       <Card className="p-5 bg-slate-50 border-slate-100">
-        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Year-to-date totals (after publish)</h3>
+        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Permanent record (after publish)</h3>
         <ul className="space-y-2 text-[11px] text-slate-600 leading-relaxed">
-          <li>When a roster is <strong>published</strong>, each person&apos;s running on-call hours, weekend count, and public-holiday hours are saved for the year. Those figures help the next month feel fair.</li>
-          <li>If something looks out of date, use <strong>Rebuild yearly totals</strong> to recalculate from every published month.</li>
+          <li>Each <strong>publish</strong> still adds hours, weekends, and holiday on-call to the numbers stored on each profile — that is the <strong>all-time</strong> audit trail.</li>
+          <li><strong>Rebuild from published rosters</strong> recalculates those stored totals from every final roster in the system. Use it if something looks wrong after an import or an old bug. It does not remove shifts; it only fixes the stored sums.</li>
         </ul>
         <div className="mt-4">
           <Button
@@ -1935,14 +2168,14 @@ const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null
             onClick={async () => {
               try {
                 const r = await api.syncCumulative();
-                setSaveMessage(r.message || 'Yearly totals updated.');
+                setSaveMessage(r.message || 'Permanent totals recalculated.');
                 setTimeout(() => setSaveMessage(null), 4000);
               } catch (e: any) {
                 setSaveMessage(e.message || 'Could not rebuild totals.');
               }
             }}
           >
-            Rebuild yearly totals from published rosters
+            Rebuild stored totals from all published rosters
           </Button>
         </div>
       </Card>
@@ -2074,7 +2307,13 @@ const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px] leading-relaxed text-slate-600">
           <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
             <span className="font-bold text-emerald-800 block mb-1">New colleagues</span>
-            They are given a normal share of the month instead of being buried or left out purely because their history is short.
+            They are given a normal share of the month instead of being buried or left out purely because their published workload in the{' '}
+            {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
+              <strong>{fhActive.schedulingYear}</strong>
+            ) : (
+              <>full record</>
+            )}{' '}
+            still looks thin.
           </div>
           <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
             <span className="font-bold text-blue-800 block mb-1">Long leave</span>
@@ -2094,7 +2333,14 @@ const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null
       <Card>
         <div className="p-4 border-b border-slate-100 bg-slate-50/50">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">This month by person</h3>
-          <p className="text-[9px] text-slate-500 font-bold mt-1">Snapshot for {rosterPeriodLabel} — badges describe workload shape, not clinical roles.</p>
+          <p className="text-[9px] text-slate-500 font-bold mt-1">
+            Snapshot for {rosterPeriodLabel} — badges describe workload shape, not clinical roles.
+            {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
+              <> “High / low history” lines compare <strong>{fhActive.schedulingYear}</strong> published totals; all-time stays on <strong>Staff</strong>.</>
+            ) : (
+              <> “High / low history” uses the <strong>full published record</strong>.</>
+            )}
+          </p>
         </div>
         <div className="divide-y divide-slate-50">
           {(() => {
@@ -2120,13 +2366,23 @@ const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-black text-slate-900">{doc?.name ?? 'Team member'}</span>
                         {isRestingHigh && (
-                          <span title="They have more total on-call history than average, so this month is intentionally a bit lighter."
+                          <span
+                            title={
+                              fhActive.isCalendarYear && fhActive.schedulingYear != null
+                                ? `More on-call hours logged in ${fhActive.schedulingYear} than average — this month is intentionally a bit lighter.`
+                                : 'More on-call hours in the full published record than average — this month is intentionally a bit lighter.'
+                            }
                             className="text-[8px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-full">
                             Lighter month (high history)
                           </span>
                         )}
                         {isCatchingUp && (
-                          <span title="They have less total on-call history than average, so this month picks up a bit more."
+                          <span
+                            title={
+                              fhActive.isCalendarYear && fhActive.schedulingYear != null
+                                ? `Fewer on-call hours logged in ${fhActive.schedulingYear} than average — this month picks up a bit more.`
+                                : 'Fewer on-call hours in the full published record than average — this month picks up a bit more.'
+                            }
                             className="text-[8px] bg-amber-50 text-amber-700 border border-amber-100 px-1.5 py-0.5 rounded-full">
                             Heavier month (catching up)
                           </span>
@@ -2154,7 +2410,23 @@ const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null
                         <span>{m.weekdayShifts} weekday</span>
                         <span>{m.weekendShifts} weekend</span>
                         {(m.holidayHours ?? 0) > 0 && <span className="text-rose-600">{(m.holidayHours ?? 0)} hrs holiday</span>}
-                        {cumHours > 0 && <span className="text-slate-400">history: {cumHours} hrs, {cumWeekends} weekend{cumWeekends !== 1 ? 's' : ''}</span>}
+                        {cumHours > 0 && (
+                          <span className="text-slate-400">
+                            {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
+                              <>
+                                in {fhActive.schedulingYear}: {cumHours} hrs, {cumWeekends} weekend{cumWeekends !== 1 ? 's' : ''}
+                                {doc?.lifetimeTotalHours !== undefined && (
+                                  <span className="text-slate-400">
+                                    {' '}
+                                    · all-time {doc.lifetimeTotalHours} hrs
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <>published record: {cumHours} hrs, {cumWeekends} weekend{cumWeekends !== 1 ? 's' : ''}</>
+                            )}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="text-right shrink-0">
@@ -2170,7 +2442,15 @@ const TuningView: React.FC<{ report: any; doctors: User[]; roster: Roster | null
           })()}
         </div>
         <div className="p-3 bg-slate-50 text-[9px] text-slate-400 font-bold border-t border-slate-100 space-y-1">
-          <div><span className="text-slate-600">Lighter month (high history)</span> means their running total is above average, so the scheduler eases off. <span className="text-amber-700">Heavier month (catching up)</span> is the opposite.</div>
+          <div>
+            <span className="text-slate-600">Lighter month (high history)</span>{' '}
+            {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
+              <>means their <strong>{fhActive.schedulingYear}</strong> published total is above average, so the scheduler eases off.</>
+            ) : (
+              <>means their running total in the full published record is above average, so the scheduler eases off.</>
+            )}{' '}
+            <span className="text-amber-700">Heavier month (catching up)</span> is the opposite.
+          </div>
           <div><span className="text-blue-700">New starter — fair share</span> lines them up with a normal month. <span className="text-emerald-700">Full pace from week one</span> is when an admin wants them treated like a long-time colleague immediately.</div>
         </div>
       </Card>
@@ -2389,23 +2669,51 @@ const DoctorsView: React.FC<{
         </Card>
       )}
 
-      <p className="text-[10px] text-slate-500 font-bold">Everyone in the department can see the same running totals — it keeps coverage decisions open and fair.</p>
+      <p className="text-[10px] text-slate-500 font-bold">
+        Everyone sees the same published numbers — it keeps coverage decisions open and fair.
+        {doctors[0]?.fairnessHistoryMode === 'CALENDAR_YEAR' ? (
+          <> When Balance uses “this calendar year only,” each row shows that <strong>scheduling window</strong> plus the unchanged <strong>all-time</strong> audit line.</>
+        ) : (
+          <> Totals here are the full published record the scheduler uses unless your admin switches the window under Balance.</>
+        )}
+      </p>
 
       <div className="grid gap-3">
         {doctors.map(doc => (
-          <Card key={doc.id} className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
+          <Card key={doc.id} className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4 min-w-0 flex-1">
               <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-600 border border-slate-100 uppercase">
                 {getInitials(doc.name || doc.id, '?')}
               </div>
               <div>
-                <div className="text-sm font-black text-slate-900 leading-none">{doc.name}</div>
+                <div className="text-sm font-black text-slate-900 leading-snug break-words">{doc.name}</div>
                 <div className="text-[9px] text-slate-400 font-bold mt-1 uppercase tracking-tighter">Assigned: {doc.firm}</div>
                 <div className="flex gap-3 mt-2 text-[10px] font-bold text-slate-600 flex-wrap">
-                  <span>Total hours (year): <span className="text-slate-900">{(doc.cumulativeTotalHours ?? 0)} hrs</span></span>
-                  <span>Holiday hours (year): <span className="text-slate-900">{(doc.cumulativeHolidayHours ?? 0)} hrs</span></span>
-                  <span>Weekends: <span className="text-slate-900">{(doc.cumulativeWeekendShifts ?? 0)}</span></span>
+                  {doc.fairnessHistoryMode === 'CALENDAR_YEAR' && doc.lifetimeTotalHours !== undefined ? (
+                    <>
+                      <span>
+                        For scheduling ({doc.schedulingYear ?? '…'}):{' '}
+                        <span className="text-slate-900">{(doc.cumulativeTotalHours ?? 0)} hrs</span>,{' '}
+                        {(doc.cumulativeWeekendShifts ?? 0)} w/e, {(doc.cumulativeHolidayHours ?? 0)} hol hrs
+                      </span>
+                      <span className="text-slate-500 font-bold">
+                        All-time record: {doc.lifetimeTotalHours} hrs · {doc.lifetimeWeekendShifts ?? 0} w/e ·{' '}
+                        {doc.lifetimeHolidayHours ?? 0} hol hrs
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Total on-call (published): <span className="text-slate-900">{(doc.cumulativeTotalHours ?? 0)} hrs</span></span>
+                      <span>Holiday on-call (published): <span className="text-slate-900">{(doc.cumulativeHolidayHours ?? 0)} hrs</span></span>
+                      <span>Weekends: <span className="text-slate-900">{(doc.cumulativeWeekendShifts ?? 0)}</span></span>
+                    </>
+                  )}
                 </div>
+                {doc.fairnessHistoryMode === 'CALENDAR_YEAR' && (
+                  <p className="text-[9px] text-indigo-600 font-bold mt-2 leading-relaxed">
+                    Balance → &quot;This calendar year only&quot;: drafts use the {doc.schedulingYear ?? '…'} column; the all-time line is the unchanged audit trail.
+                  </p>
+                )}
                 {isAdmin && (
                   <div className="mt-3 space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">First months on the rota</label>
@@ -2437,7 +2745,9 @@ const DoctorsView: React.FC<{
             {isAdmin && (
               <button 
                 onClick={() => onDelete(doc.id)}
-                className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
+                className="p-2 text-slate-300 hover:text-rose-500 transition-colors shrink-0 self-end sm:self-center"
+                type="button"
+                aria-label={`Remove ${doc.name} from department`}
               >
                 <Trash2 size={16} />
               </button>

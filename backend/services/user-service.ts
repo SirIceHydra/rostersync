@@ -2,6 +2,11 @@ import express from 'express';
 import cors from 'cors';
 import { Database } from '../shared/database.js';
 import { authMiddleware, adminOnly, requireDepartment } from '../shared/auth.js';
+import {
+  getPublishedYearRollupForDepartment,
+  normalizeFairnessHistoryMode,
+  type FairnessYearRollup,
+} from '../shared/fairnessRollup.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -18,9 +23,26 @@ app.use(cors({
 app.use(express.json());
 
 // Get doctors in current department
+// Optional: ?schedulingYear=2026 — when fairness uses "this calendar year only", returns scheduling* fields + lifetime* mirrors
 app.get('/api/users/doctors', authMiddleware, withDept, async (req, res) => {
   try {
     const departmentId = (req as any).departmentId;
+    const yearParam = req.query.schedulingYear;
+    const schedulingYear =
+      yearParam !== undefined && yearParam !== ''
+        ? parseInt(String(yearParam), 10)
+        : null;
+
+    const fairnessRow = await db
+      .get(
+        `SELECT fairness_history_mode as fairnessHistoryMode FROM fairness_settings WHERE department_id = ?`,
+        [departmentId]
+      )
+      .catch(() => null);
+    const fairnessHistoryMode = normalizeFairnessHistoryMode(
+      fairnessRow?.fairnessHistoryMode as string | undefined
+    );
+
     const doctors = await db.all(
       `SELECT u.id, u.email, u.name, u.role, u.firm,
               u.cumulative_holiday_hours,
@@ -35,18 +57,56 @@ app.get('/api/users/doctors', authMiddleware, withDept, async (req, res) => {
       [departmentId]
     );
 
-    res.json(doctors.map(d => ({
-      id: d.id,
-      email: d.email,
-      name: d.name,
-      role: d.role,
-      firm: d.firm,
-      cumulativeHolidayHours: d.cumulative_holiday_hours || 0,
-      cumulativeTotalHours: d.cumulative_total_hours || 0,
-      cumulativeWeekendShifts: d.cumulative_weekend_shifts || 0,
-      startDate: d.start_date || null,
-      workloadStartMode: d.workload_start_mode || 'STAGGERED'
-    })));
+    let yearRollup: Map<string, FairnessYearRollup> | null = null;
+    if (
+      fairnessHistoryMode === 'CALENDAR_YEAR' &&
+      schedulingYear !== null &&
+      !Number.isNaN(schedulingYear)
+    ) {
+      yearRollup = await getPublishedYearRollupForDepartment(db, departmentId, schedulingYear);
+    }
+
+    res.json(
+      doctors.map(d => {
+        const lifetimeHoliday = d.cumulative_holiday_hours || 0;
+        const lifetimeTotal = d.cumulative_total_hours || 0;
+        const lifetimeWeekends = d.cumulative_weekend_shifts || 0;
+        const base: Record<string, unknown> = {
+          id: d.id,
+          email: d.email,
+          name: d.name,
+          role: d.role,
+          firm: d.firm,
+          cumulativeHolidayHours: lifetimeHoliday,
+          cumulativeTotalHours: lifetimeTotal,
+          cumulativeWeekendShifts: lifetimeWeekends,
+          startDate: d.start_date || null,
+          workloadStartMode: d.workload_start_mode || 'STAGGERED',
+          fairnessHistoryMode,
+        };
+
+        if (yearRollup && schedulingYear !== null) {
+          const r = yearRollup.get(d.id) ?? {
+            totalHours: 0,
+            weekendShifts: 0,
+            holidayHours: 0,
+          };
+          base.lifetimeTotalHours = lifetimeTotal;
+          base.lifetimeWeekendShifts = lifetimeWeekends;
+          base.lifetimeHolidayHours = lifetimeHoliday;
+          base.schedulingYear = schedulingYear;
+          base.schedulingTotalHours = r.totalHours;
+          base.schedulingWeekendShifts = r.weekendShifts;
+          base.schedulingHolidayHours = r.holidayHours;
+          // Fields the roster engine and in-app explainers read:
+          base.cumulativeTotalHours = r.totalHours;
+          base.cumulativeWeekendShifts = r.weekendShifts;
+          base.cumulativeHolidayHours = r.holidayHours;
+        }
+
+        return base;
+      })
+    );
   } catch (error: any) {
     console.error('Get doctors error:', error);
     res.status(500).json({ error: 'Failed to fetch doctors' });

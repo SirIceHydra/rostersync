@@ -21,6 +21,14 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
+.touch-pan-y {
+  touch-action: pan-y;
+}
+
 /* Animation utilities */
 @keyframes fadeIn {
   from { opacity: 0; }

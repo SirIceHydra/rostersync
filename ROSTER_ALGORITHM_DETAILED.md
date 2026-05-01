@@ -88,7 +88,7 @@ When assigning weekend shifts, the algorithm **first checks and balances weekend
 - If one doctor already did 2 weekends, they shouldn't do a 3rd until others catch up
 
 ### 6. **Public Holiday Longitudinal Tracking**
-Public holiday hours are tracked cumulatively across years (not reset monthly). Doctors with fewer PH hours get priority for PH assignments.
+Public holiday hours are tracked cumulatively **across years** (not reset each January; not “calendar year only” in the database). Each **publish** adds that month’s PH on-call hours to `cumulative_holiday_hours`. Doctors with fewer recorded PH hours get priority for PH assignments. See **ROSTER_ALGORITHM_HIGH_LEVEL.md → “How workload history works”** for drafts vs publish, New Year, and sync behaviour.
 
 **Public Holidays in System (South Africa):**
 - Fixed dates: New Year's Day (Jan 1), Human Rights Day (Mar 21), etc.

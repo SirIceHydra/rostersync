@@ -286,6 +286,9 @@ export class Database {
       // min_rest_days replaces allow_consecutive_shifts as the canonical setting:
       //   0 = consecutive ok | 1 = no consecutive (default) | 2+ = require additional rest days
       await runQuery(`ALTER TABLE fairness_settings ADD COLUMN min_rest_days INTEGER NOT NULL DEFAULT 1`).catch(() => {});
+      await runQuery(
+        `ALTER TABLE fairness_settings ADD COLUMN fairness_history_mode TEXT NOT NULL DEFAULT 'ALL_TIME'`
+      ).catch(() => {});
 
       // Migration: extend requests CHECK constraint to include the latest request types
       // (PREFERRED_WORK, POST_CALL_OFF). SQLite doesn't support ALTER COLUMN, so we recreate

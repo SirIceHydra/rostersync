@@ -39,6 +39,11 @@ export interface User {
    * because it places the new joiner mid-pack rather than artificially lighter or heavier.
    */
   workloadStartMode?: 'IMMEDIATE' | 'STAGGERED' | 'NEXT_MONTH';
+  fairnessHistoryMode?: 'ALL_TIME' | 'CALENDAR_YEAR';
+  schedulingYear?: number;
+  lifetimeTotalHours?: number;
+  lifetimeWeekendShifts?: number;
+  lifetimeHolidayHours?: number;
 }
 
 export interface ShiftTemplate {

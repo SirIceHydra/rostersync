@@ -128,8 +128,12 @@ class ApiClient {
   }
 
   // Users
-  async getDoctors() {
-    return this.request<any[]>('/api/users/doctors');
+  async getDoctors(schedulingYear?: number) {
+    const q =
+      schedulingYear !== undefined && !Number.isNaN(schedulingYear)
+        ? `?schedulingYear=${schedulingYear}`
+        : '';
+    return this.request<any[]>(`/api/users/doctors${q}`);
   }
 
   async getUsers() {
@@ -222,6 +226,7 @@ class ApiClient {
       maxShiftsPer7Days: number;
       minRestDays: number;
       allowConsecutiveShifts?: boolean;
+      fairnessHistoryMode: 'ALL_TIME' | 'CALENDAR_YEAR';
     }>('/api/analytics/fairness-settings');
   }
 
@@ -230,6 +235,7 @@ class ApiClient {
     weekendLimit: number;
     maxShiftsPer7Days: number;
     minRestDays: number;
+    fairnessHistoryMode: 'ALL_TIME' | 'CALENDAR_YEAR';
   }) {
     return this.request<{
       success: boolean;
@@ -237,6 +243,7 @@ class ApiClient {
       weekendLimit: number;
       maxShiftsPer7Days: number;
       minRestDays: number;
+      fairnessHistoryMode: 'ALL_TIME' | 'CALENDAR_YEAR';
     }>('/api/analytics/fairness-settings', {
       method: 'PUT',
       body: JSON.stringify(settings),

@@ -40,6 +40,17 @@ export interface User {
    * because it places the new joiner mid-pack rather than artificially lighter or heavier.
    */
   workloadStartMode?: 'IMMEDIATE' | 'STAGGERED' | 'NEXT_MONTH';
+  /** Department setting echoed on each doctor row from GET /doctors */
+  fairnessHistoryMode?: 'ALL_TIME' | 'CALENDAR_YEAR';
+  /** When fairness uses calendar-year window, year those scheduling totals are for */
+  schedulingYear?: number;
+  /** All-time published totals (only set when fairnessHistoryMode is CALENDAR_YEAR) */
+  lifetimeTotalHours?: number;
+  lifetimeWeekendShifts?: number;
+  lifetimeHolidayHours?: number;
+  schedulingTotalHours?: number;
+  schedulingWeekendShifts?: number;
+  schedulingHolidayHours?: number;
 }
 
 export interface ShiftTemplate {
