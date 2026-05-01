@@ -1,9 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
+import rateLimit from 'express-rate-limit';
+import { z } from 'zod';
 import { Database } from '../shared/database.js';
 import { generateToken, verifyToken, authMiddleware as sharedAuthMiddleware, adminOnly, requireDepartment } from '../shared/auth.js';
 import { generateUniqueDepartmentCode } from '../shared/departmentCode.js';
+import { logger } from '../shared/logger.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -13,11 +16,38 @@ const PORT = process.env.AUTH_SERVICE_PORT || 4001;
 const db = Database.getInstance();
 const withDept = requireDepartment(() => db);
 
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: true
-}));
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
 app.use(express.json());
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, please try again later' },
+});
+
+// ── Validation schemas ────────────────────────────────────────────────────────
+const RegisterSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  name: z.string().min(1).max(100),
+  role: z.enum(['ADMIN', 'DOCTOR']),
+  firm: z.string().max(100).optional(),
+  departmentName: z.string().max(100).optional(),
+});
+
+const LoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+// ── Health check ──────────────────────────────────────────────────────────────
+app.get('/health', async (_req, res) => {
+  const dbOk = await db.ping();
+  res.status(dbOk ? 200 : 503).json({ status: dbOk ? 'ok' : 'degraded', service: 'auth' });
+});
 
 async function getDepartmentsForUser(userId: string): Promise<{ id: string; code: string; name: string | null }[]> {
   const rows = await db.all(
@@ -29,26 +59,20 @@ async function getDepartmentsForUser(userId: string): Promise<{ id: string; code
   return rows.map((r: any) => ({ id: r.id, code: r.code, name: r.name || null }));
 }
 
-// Register endpoint
-app.post('/api/auth/register', async (req, res) => {
+// ── Register ──────────────────────────────────────────────────────────────────
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
-    const { email, password, name, role, firm, departmentName } = req.body;
-
-    if (!email || !password || !name || !role) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    const parsed = RegisterSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
     }
-
-    if (role !== 'ADMIN' && role !== 'DOCTOR') {
-      return res.status(400).json({ error: 'Invalid role' });
-    }
+    const { email, password, name, role, firm, departmentName } = parsed.data;
 
     const existing = await db.get('SELECT id FROM users WHERE email = ?', [email]);
-    if (existing) {
-      return res.status(409).json({ error: 'User already exists' });
-    }
+    if (existing) return res.status(409).json({ error: 'User already exists' });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const id = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const id = crypto.randomUUID();
     const now = Date.now();
 
     await db.run(
@@ -60,12 +84,12 @@ app.post('/api/auth/register', async (req, res) => {
     let departments: { id: string; code: string; name: string | null }[] = [];
 
     if (role === 'ADMIN') {
-      const deptId = `dept-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const deptId = crypto.randomUUID();
       const code = await generateUniqueDepartmentCode(db);
-      const name = departmentName || `Department ${code}`;
+      const deptName = departmentName || `Department ${code}`;
       await db.run(
         'INSERT INTO departments (id, code, name, created_at, created_by) VALUES (?, ?, ?, ?, ?)',
-        [deptId, code, name, now, id]
+        [deptId, code, deptName, now, id]
       );
       await db.run(
         'INSERT INTO user_departments (user_id, department_id, role_in_dept, joined_at) VALUES (?, ?, ?, ?)',
@@ -75,203 +99,148 @@ app.post('/api/auth/register', async (req, res) => {
         'INSERT INTO fairness_settings (department_id, hour_diff_limit, weekend_diff_limit, created_at, updated_at) VALUES (?, 24, 1, ?, ?)',
         [deptId, now, now]
       );
-      departments = [{ id: deptId, code, name }];
+      departments = [{ id: deptId, code, name: deptName }];
     }
 
     const token = generateToken({ userId: id, email, role });
-
     res.status(201).json({
-      user: {
-        id,
-        email,
-        name,
-        role,
-        firm: firm || null,
-        cumulativeHolidayHours: 0,
-        cumulativeTotalHours: 0,
-        cumulativeWeekendShifts: 0,
-        startDate: now
-      },
+      user: { id, email, name, role, firm: firm || null, cumulativeHolidayHours: 0, cumulativeTotalHours: 0, cumulativeWeekendShifts: 0, startDate: now },
       token,
       department: role === 'ADMIN' ? departments[0] : null,
-      departments
+      departments,
     });
   } catch (error: any) {
-    console.error('Register error:', error);
-    res.status(500).json({ error: 'Registration failed', details: error.message });
+    logger.error({ err: error }, 'Register error');
+    res.status(500).json({ error: 'Registration failed' });
   }
 });
 
-// Login endpoint
-app.post('/api/auth/login', async (req, res) => {
+// ── Login ─────────────────────────────────────────────────────────────────────
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password required' });
+    const parsed = LoginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
     }
+    const { email, password } = parsed.data;
 
     const user = await db.get('SELECT * FROM users WHERE email = ?', [email]);
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
     const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
     const departments = await getDepartmentsForUser(user.id);
-    const token = generateToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role
-    });
+    const token = generateToken({ userId: user.id, email: user.email, role: user.role });
 
     res.json({
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        firm: user.firm,
+        id: user.id, email: user.email, name: user.name, role: user.role, firm: user.firm,
         cumulativeHolidayHours: user.cumulative_holiday_hours || 0,
-        cumulativeTotalHours: user.cumulative_total_hours || 0,
+        cumulativeTotalHours:   user.cumulative_total_hours   || 0,
         cumulativeWeekendShifts: user.cumulative_weekend_shifts || 0,
-        startDate: user.start_date || null
+        startDate: user.start_date || null,
       },
       token,
-      departments
+      departments,
     });
   } catch (error: any) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed', details: error.message });
+    logger.error({ err: error }, 'Login error');
+    res.status(500).json({ error: 'Login failed' });
   }
 });
 
-// Verify token endpoint
+// ── Verify token ──────────────────────────────────────────────────────────────
 app.get('/api/auth/verify', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' });
-    }
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token provided' });
 
-    const token = authHeader.substring(7);
-    const payload = verifyToken(token);
-    if (!payload) {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
+    const payload = verifyToken(authHeader.substring(7));
+    if (!payload) return res.status(401).json({ error: 'Invalid token' });
 
     const user = await db.get('SELECT * FROM users WHERE id = ?', [payload.userId]);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
     const departments = await getDepartmentsForUser(user.id);
-
     res.json({
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        firm: user.firm,
+        id: user.id, email: user.email, name: user.name, role: user.role, firm: user.firm,
         cumulativeHolidayHours: user.cumulative_holiday_hours || 0,
-        cumulativeTotalHours: user.cumulative_total_hours || 0,
+        cumulativeTotalHours:   user.cumulative_total_hours   || 0,
         cumulativeWeekendShifts: user.cumulative_weekend_shifts || 0,
-        startDate: user.start_date || null
+        startDate: user.start_date || null,
       },
-      departments
+      departments,
     });
   } catch (error: any) {
-    console.error('Verify error:', error);
+    logger.error({ err: error }, 'Verify error');
     res.status(500).json({ error: 'Verification failed' });
   }
 });
 
-// Optional auth middleware for protected routes (kept for backwards compatibility)
+// ── Local auth middleware (used only within this service) ─────────────────────
 function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
+  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token provided' });
   const payload = verifyToken(authHeader.substring(7));
-  if (!payload) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
+  if (!payload) return res.status(401).json({ error: 'Invalid token' });
   (req as any).userId = payload.userId;
   next();
 }
 
-// Join a department by code (doctor or admin can join another department)
-// For doctors, this now creates a join request that admins must approve.
+// ── Join department ───────────────────────────────────────────────────────────
 app.post('/api/auth/join-department', authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
     const { code } = req.body;
-
-    if (!code || typeof code !== 'string') {
-      return res.status(400).json({ error: 'Department code required' });
-    }
+    if (!code || typeof code !== 'string') return res.status(400).json({ error: 'Department code required' });
 
     const trimmed = code.trim().toUpperCase();
     const dept = await db.get('SELECT id, code, name FROM departments WHERE code = ?', [trimmed]);
-    if (!dept) {
-      return res.status(404).json({ error: 'Invalid department code' });
-    }
+    if (!dept) return res.status(404).json({ error: 'Invalid department code' });
 
     const existing = await db.get(
-      'SELECT 1 FROM user_departments WHERE user_id = ? AND department_id = ?',
-      [userId, dept.id]
+      'SELECT 1 FROM user_departments WHERE user_id = ? AND department_id = ?', [userId, dept.id]
     );
     if (existing) {
-      // Already a member – just return the department info
       return res.json({ department: { id: dept.id, code: dept.code, name: dept.name || null }, alreadyMember: true });
     }
 
     const now = Date.now();
-    // Check for existing pending request
     const pending = await db.get(
-      'SELECT id, status FROM department_join_requests WHERE user_id = ? AND department_id = ? AND status = ?',
+      'SELECT id FROM department_join_requests WHERE user_id = ? AND department_id = ? AND status = ?',
       [userId, dept.id, 'PENDING']
     );
     if (pending) {
-      return res.json({
-        department: { id: dept.id, code: dept.code, name: dept.name || null },
-        pending: true
-      });
+      return res.json({ department: { id: dept.id, code: dept.code, name: dept.name || null }, pending: true });
     }
 
-    const reqId = `join-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const reqId = crypto.randomUUID();
     await db.run(
       'INSERT INTO department_join_requests (id, user_id, department_id, status, created_at) VALUES (?, ?, ?, ?, ?)',
       [reqId, userId, dept.id, 'PENDING', now]
     );
 
-    res.json({
-      department: { id: dept.id, code: dept.code, name: dept.name || null },
-      pending: true
-    });
+    res.json({ department: { id: dept.id, code: dept.code, name: dept.name || null }, pending: true });
   } catch (error: any) {
-    console.error('Join department error:', error);
+    logger.error({ err: error }, 'Join department error');
     res.status(500).json({ error: 'Failed to join department' });
   }
 });
 
-// List departments the user belongs to
+// ── List user departments ─────────────────────────────────────────────────────
 app.get('/api/auth/departments', authMiddleware, async (req, res) => {
   try {
-    const userId = (req as any).userId;
-    const departments = await getDepartmentsForUser(userId);
+    const departments = await getDepartmentsForUser((req as any).userId);
     res.json({ departments });
   } catch (error: any) {
-    console.error('Get departments error:', error);
+    logger.error({ err: error }, 'Get departments error');
     res.status(500).json({ error: 'Failed to get departments' });
   }
 });
 
-// List pending join requests for the current department (admin only)
+// ── List pending join requests (admin) ────────────────────────────────────────
 app.get('/api/auth/join-requests', sharedAuthMiddleware, withDept, adminOnly, async (req, res) => {
   try {
     const departmentId = (req as any).departmentId;
@@ -284,21 +253,15 @@ app.get('/api/auth/join-requests', sharedAuthMiddleware, withDept, adminOnly, as
       [departmentId]
     );
     res.json({
-      requests: rows.map((r: any) => ({
-        id: r.id,
-        userId: r.user_id,
-        email: r.email,
-        name: r.name,
-        createdAt: r.created_at
-      }))
+      requests: rows.map((r: any) => ({ id: r.id, userId: r.user_id, email: r.email, name: r.name, createdAt: r.created_at }))
     });
   } catch (error: any) {
-    console.error('Get join requests error:', error);
+    logger.error({ err: error }, 'Get join requests error');
     res.status(500).json({ error: 'Failed to get join requests' });
   }
 });
 
-// Approve a join request (admin only)
+// ── Approve join request (admin) ──────────────────────────────────────────────
 app.post('/api/auth/join-requests/:id/approve', sharedAuthMiddleware, withDept, adminOnly, async (req, res) => {
   try {
     const departmentId = (req as any).departmentId;
@@ -306,8 +269,7 @@ app.post('/api/auth/join-requests/:id/approve', sharedAuthMiddleware, withDept, 
     const { id } = req.params;
 
     const requestRow = await db.get(
-      'SELECT * FROM department_join_requests WHERE id = ? AND department_id = ?',
-      [id, departmentId]
+      'SELECT * FROM department_join_requests WHERE id = ? AND department_id = ?', [id, departmentId]
     );
     if (!requestRow || requestRow.status !== 'PENDING') {
       return res.status(404).json({ error: 'Join request not found or already handled' });
@@ -319,7 +281,7 @@ app.post('/api/auth/join-requests/:id/approve', sharedAuthMiddleware, withDept, 
       ['APPROVED', now, admin.userId, id]
     );
     await db.run(
-      'INSERT OR IGNORE INTO user_departments (user_id, department_id, role_in_dept, joined_at) VALUES (?, ?, ?, ?)',
+      'INSERT INTO user_departments (user_id, department_id, role_in_dept, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
       [requestRow.user_id, departmentId, 'MEMBER', now]
     );
 
@@ -327,24 +289,20 @@ app.post('/api/auth/join-requests/:id/approve', sharedAuthMiddleware, withDept, 
     res.json({
       success: true,
       user: user && {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        firm: user.firm,
+        id: user.id, email: user.email, name: user.name, role: user.role, firm: user.firm,
         cumulativeHolidayHours: user.cumulative_holiday_hours || 0,
-        cumulativeTotalHours: user.cumulative_total_hours || 0,
+        cumulativeTotalHours:   user.cumulative_total_hours   || 0,
         cumulativeWeekendShifts: user.cumulative_weekend_shifts || 0,
-        startDate: user.start_date || null
-      }
+        startDate: user.start_date || null,
+      },
     });
   } catch (error: any) {
-    console.error('Approve join request error:', error);
+    logger.error({ err: error }, 'Approve join request error');
     res.status(500).json({ error: 'Failed to approve join request' });
   }
 });
 
-// Reject a join request (admin only)
+// ── Reject join request (admin) ───────────────────────────────────────────────
 app.post('/api/auth/join-requests/:id/reject', sharedAuthMiddleware, withDept, adminOnly, async (req, res) => {
   try {
     const departmentId = (req as any).departmentId;
@@ -352,8 +310,7 @@ app.post('/api/auth/join-requests/:id/reject', sharedAuthMiddleware, withDept, a
     const { id } = req.params;
 
     const requestRow = await db.get(
-      'SELECT * FROM department_join_requests WHERE id = ? AND department_id = ?',
-      [id, departmentId]
+      'SELECT * FROM department_join_requests WHERE id = ? AND department_id = ?', [id, departmentId]
     );
     if (!requestRow || requestRow.status !== 'PENDING') {
       return res.status(404).json({ error: 'Join request not found or already handled' });
@@ -364,14 +321,16 @@ app.post('/api/auth/join-requests/:id/reject', sharedAuthMiddleware, withDept, a
       'UPDATE department_join_requests SET status = ?, decided_at = ?, decided_by = ? WHERE id = ?',
       ['REJECTED', now, admin.userId, id]
     );
-
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Reject join request error:', error);
+    logger.error({ err: error }, 'Reject join request error');
     res.status(500).json({ error: 'Failed to reject join request' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🔐 Auth Service running on port ${PORT}`);
+db.waitForInit().then(() => {
+  app.listen(PORT, () => logger.info(`Auth Service running on port ${PORT}`));
+}).catch(err => {
+  logger.error({ err }, 'Failed to initialise database');
+  process.exit(1);
 });

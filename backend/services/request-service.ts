@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { Database } from '../shared/database.js';
 import { authMiddleware, adminOnly, requireDepartment } from '../shared/auth.js';
+import { logger } from '../shared/logger.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -11,13 +12,16 @@ const PORT = process.env.REQUEST_SERVICE_PORT || 4003;
 const db = Database.getInstance();
 const withDept = requireDepartment(() => db);
 
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: true
-}));
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
 app.use(express.json());
 
-// Get all requests for current department
+// ── Health check ──────────────────────────────────────────────────────────────
+app.get('/health', async (_req, res) => {
+  const dbOk = await db.ping();
+  res.status(dbOk ? 200 : 503).json({ status: dbOk ? 'ok' : 'degraded', service: 'request' });
+});
+
+// ── Get all requests for current department ───────────────────────────────────
 app.get('/api/requests', authMiddleware, withDept, async (req, res) => {
   try {
     const departmentId = (req as any).departmentId;
@@ -27,35 +31,27 @@ app.get('/api/requests', authMiddleware, withDept, async (req, res) => {
        ORDER BY created_at DESC`,
       [departmentId]
     );
-
     res.json(requests.map(r => ({
-      id: r.id,
-      doctorId: r.doctor_id,
-      type: r.type,
-      date: r.date,
-      status: r.status,
-      reason: r.reason,
-      swapWithDoctorId: r.swap_with_doctor_id,
-      createdAt: r.created_at
+      id: r.id, doctorId: r.doctor_id, type: r.type, date: r.date,
+      status: r.status, reason: r.reason,
+      swapWithDoctorId: r.swap_with_doctor_id, createdAt: r.created_at,
     })));
   } catch (error: any) {
-    console.error('Get requests error:', error);
+    logger.error({ err: error }, 'Get requests error');
     res.status(500).json({ error: 'Failed to fetch requests' });
   }
 });
 
-// Create request (in current department)
+// ── Create request ────────────────────────────────────────────────────────────
 app.post('/api/requests', authMiddleware, withDept, async (req, res) => {
   try {
     const user = (req as any).user;
     const departmentId = (req as any).departmentId;
     const { type, date, reason, swapWithDoctorId } = req.body;
 
-    if (!type || !date) {
-      return res.status(400).json({ error: 'Type and date required' });
-    }
+    if (!type || !date) return res.status(400).json({ error: 'Type and date required' });
 
-    const id = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const id = crypto.randomUUID();
     const now = Date.now();
 
     await db.run(
@@ -66,22 +62,17 @@ app.post('/api/requests', authMiddleware, withDept, async (req, res) => {
 
     const request = await db.get('SELECT * FROM requests WHERE id = ?', [id]);
     res.status(201).json({
-      id: request.id,
-      doctorId: request.doctor_id,
-      type: request.type,
-      date: request.date,
-      status: request.status,
-      reason: request.reason,
-      swapWithDoctorId: request.swap_with_doctor_id,
-      createdAt: request.created_at
+      id: request.id, doctorId: request.doctor_id, type: request.type, date: request.date,
+      status: request.status, reason: request.reason,
+      swapWithDoctorId: request.swap_with_doctor_id, createdAt: request.created_at,
     });
   } catch (error: any) {
-    console.error('Create request error:', error);
+    logger.error({ err: error }, 'Create request error');
     res.status(500).json({ error: 'Failed to create request', details: error.message });
   }
 });
 
-// Update request status (admin only)
+// ── Update request status (admin) ─────────────────────────────────────────────
 app.patch('/api/requests/:id/status', authMiddleware, withDept, adminOnly, async (req, res) => {
   try {
     const departmentId = (req as any).departmentId;
@@ -99,22 +90,21 @@ app.patch('/api/requests/:id/status', authMiddleware, withDept, adminOnly, async
 
     const request = await db.get('SELECT * FROM requests WHERE id = ?', [id]);
     if (!request) return res.status(404).json({ error: 'Request not found' });
+
     res.json({
-      id: request.id,
-      doctorId: request.doctor_id,
-      type: request.type,
-      date: request.date,
-      status: request.status,
-      reason: request.reason,
-      swapWithDoctorId: request.swap_with_doctor_id,
-      createdAt: request.created_at
+      id: request.id, doctorId: request.doctor_id, type: request.type, date: request.date,
+      status: request.status, reason: request.reason,
+      swapWithDoctorId: request.swap_with_doctor_id, createdAt: request.created_at,
     });
   } catch (error: any) {
-    console.error('Update request error:', error);
+    logger.error({ err: error }, 'Update request error');
     res.status(500).json({ error: 'Failed to update request' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`📝 Request Service running on port ${PORT}`);
+db.waitForInit().then(() => {
+  app.listen(PORT, () => logger.info(`Request Service running on port ${PORT}`));
+}).catch(err => {
+  logger.error({ err }, 'Failed to initialise database');
+  process.exit(1);
 });

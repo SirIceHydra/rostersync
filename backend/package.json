@@ -4,26 +4,30 @@
   "type": "module",
   "description": "RosterSync Medical MVP - Microservices Backend",
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail -n auth,roster,request,user,analytics,gateway -c blue,green,yellow,magenta,cyan,white \"npm run dev:auth\" \"npm run dev:roster\" \"npm run dev:request\" \"npm run dev:user\" \"npm run dev:analytics\" \"sleep 2 && npm run dev:gateway\"",
-    "dev:gateway": "node --loader ts-node/esm services/gateway.ts",
-    "dev:auth": "node --loader ts-node/esm services/auth-service.ts",
-    "dev:roster": "node --loader ts-node/esm services/roster-service.ts",
-    "dev:request": "node --loader ts-node/esm services/request-service.ts",
-    "dev:user": "node --loader ts-node/esm services/user-service.ts",
+    "dev:gateway":   "node --loader ts-node/esm services/gateway.ts",
+    "dev:auth":      "node --loader ts-node/esm services/auth-service.ts",
+    "dev:roster":    "node --loader ts-node/esm services/roster-service.ts",
+    "dev:request":   "node --loader ts-node/esm services/request-service.ts",
+    "dev:user":      "node --loader ts-node/esm services/user-service.ts",
     "dev:analytics": "node --loader ts-node/esm services/analytics-service.ts",
-    "dev:all": "concurrently --kill-others-on-fail -n auth,roster,request,user,analytics,gateway -c blue,green,yellow,magenta,cyan,white \"npm run dev:auth\" \"npm run dev:roster\" \"npm run dev:request\" \"npm run dev:user\" \"npm run dev:analytics\" \"sleep 2 && npm run dev:gateway\"",
-    "build": "tsc",
-    "start": "node dist/gateway.js"
+    "dev": "concurrently --kill-others-on-fail -n auth,roster,request,user,analytics,gateway -c blue,green,yellow,magenta,cyan,white \"npm run dev:auth\" \"npm run dev:roster\" \"npm run dev:request\" \"npm run dev:user\" \"npm run dev:analytics\" \"sleep 2 && npm run dev:gateway\"",
+    "dev:all": "npm run dev",
+    "build": "tsc --project tsconfig.json",
+    "start": "node dist/services/gateway.js",
+    "start:all": "concurrently --kill-others-on-fail -n auth,roster,request,user,analytics,gateway -c blue,green,yellow,magenta,cyan,white \"node dist/services/auth-service.js\" \"node dist/services/roster-service.js\" \"node dist/services/request-service.js\" \"node dist/services/user-service.js\" \"node dist/services/analytics-service.js\" \"sleep 2 && node dist/services/gateway.js\""
   },
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "jsonwebtoken": "^9.0.2",
     "bcryptjs": "^2.4.3",
-    "sqlite3": "^5.1.6",
+    "pg": "^8.11.3",
     "dotenv": "^16.3.1",
     "zod": "^3.22.4",
-    "http-proxy-middleware": "^2.0.6"
+    "http-proxy-middleware": "^2.0.6",
+    "pino": "^8.19.0",
+    "pino-pretty": "^11.0.0",
+    "express-rate-limit": "^7.2.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -31,7 +35,7 @@
     "@types/cors": "^2.8.17",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/bcryptjs": "^2.4.6",
-    "@types/sqlite3": "^3.1.11",
+    "@types/pg": "^8.11.5",
     "concurrently": "^8.2.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"

@@ -32,13 +32,14 @@ export async function getPublishedYearRollupForDepartment(
   options?: { excludeRosterId?: string }
 ): Promise<Map<string, FairnessYearRollup>> {
   const excludeId = options?.excludeRosterId;
+  // Use plain snake_case column names — Postgres lowercases camelCase aliases
   const rows = await db.all(
     excludeId
-      ? `SELECT s.doctor_id as doctorId, s.template_id as templateId, s.is_public_holiday as isPublicHoliday
+      ? `SELECT s.doctor_id, s.template_id, s.is_public_holiday
          FROM shifts s
          INNER JOIN rosters r ON r.id = s.roster_id
          WHERE r.department_id = ? AND r.year = ? AND r.status = ? AND r.id != ?`
-      : `SELECT s.doctor_id as doctorId, s.template_id as templateId, s.is_public_holiday as isPublicHoliday
+      : `SELECT s.doctor_id, s.template_id, s.is_public_holiday
          FROM shifts s
          INNER JOIN rosters r ON r.id = s.roster_id
          WHERE r.department_id = ? AND r.year = ? AND r.status = ?`,
@@ -49,12 +50,12 @@ export async function getPublishedYearRollupForDepartment(
 
   const map = new Map<string, FairnessYearRollup>();
   for (const row of rows) {
-    const doctorId = String(row.doctorId ?? '');
+    const doctorId = String(row.doctor_id ?? '');
     if (!doctorId) continue;
-    const tid = row.templateId != null ? String(row.templateId) : '';
+    const tid = row.template_id != null ? String(row.template_id) : '';
     const isWeekend = tid.includes('weekend');
     const hours = isWeekend ? 24 : 16;
-    const isPh = Boolean(row.isPublicHoliday);
+    const isPh = Boolean(row.is_public_holiday);
     const phHours = isPh ? hours : 0;
 
     if (!map.has(doctorId)) {
