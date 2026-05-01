@@ -26,7 +26,8 @@ app.get('/api/users/doctors', authMiddleware, withDept, async (req, res) => {
               u.cumulative_holiday_hours,
               u.cumulative_total_hours,
               u.cumulative_weekend_shifts,
-              u.start_date
+              u.start_date,
+              u.workload_start_mode
        FROM users u
        INNER JOIN user_departments ud ON ud.user_id = u.id AND ud.department_id = ?
        WHERE u.role IN ('DOCTOR', 'ADMIN')
@@ -44,7 +45,7 @@ app.get('/api/users/doctors', authMiddleware, withDept, async (req, res) => {
       cumulativeTotalHours: d.cumulative_total_hours || 0,
       cumulativeWeekendShifts: d.cumulative_weekend_shifts || 0,
       startDate: d.start_date || null,
-      workloadStartMode: d.workload_start_mode || 'NEXT_MONTH'
+      workloadStartMode: d.workload_start_mode || 'STAGGERED'
     })));
   } catch (error: any) {
     console.error('Get doctors error:', error);
@@ -79,7 +80,7 @@ app.get('/api/users', authMiddleware, withDept, adminOnly, async (req, res) => {
       cumulativeTotalHours: u.cumulative_total_hours || 0,
       cumulativeWeekendShifts: u.cumulative_weekend_shifts || 0,
       startDate: u.start_date || null,
-      workloadStartMode: u.workload_start_mode || 'NEXT_MONTH'
+      workloadStartMode: u.workload_start_mode || 'STAGGERED'
     })));
   } catch (error: any) {
     console.error('Get users error:', error);
@@ -126,7 +127,7 @@ app.post('/api/users', authMiddleware, withDept, adminOnly, async (req, res) => 
       cumulativeTotalHours: user.cumulative_total_hours || 0,
       cumulativeWeekendShifts: user.cumulative_weekend_shifts || 0,
       startDate: user.start_date || null,
-      workloadStartMode: user.workload_start_mode || 'NEXT_MONTH'
+      workloadStartMode: user.workload_start_mode || 'STAGGERED'
     });
   } catch (error: any) {
     console.error('Add user error:', error);
@@ -175,8 +176,8 @@ app.patch('/api/users/:id', authMiddleware, adminOnly, async (req, res) => {
       params.push(cumulativeHolidayHours);
     }
     if (workloadStartMode !== undefined) {
-      if (!['IMMEDIATE', 'NEXT_MONTH'].includes(workloadStartMode)) {
-        return res.status(400).json({ error: 'workloadStartMode must be IMMEDIATE or NEXT_MONTH' });
+      if (!['IMMEDIATE', 'STAGGERED', 'NEXT_MONTH'].includes(workloadStartMode)) {
+        return res.status(400).json({ error: 'workloadStartMode must be IMMEDIATE, STAGGERED, or NEXT_MONTH' });
       }
       updates.push('workload_start_mode = ?');
       params.push(workloadStartMode);
@@ -203,7 +204,7 @@ app.patch('/api/users/:id', authMiddleware, adminOnly, async (req, res) => {
       role: user.role,
       firm: user.firm,
       cumulativeHolidayHours: user.cumulative_holiday_hours || 0,
-      workloadStartMode: user.workload_start_mode || 'NEXT_MONTH'
+      workloadStartMode: user.workload_start_mode || 'STAGGERED'
     });
   } catch (error: any) {
     console.error('Update user error:', error);

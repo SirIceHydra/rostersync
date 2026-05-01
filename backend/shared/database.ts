@@ -81,7 +81,11 @@ export class Database {
       await runQuery(`ALTER TABLE users ADD COLUMN cumulative_total_hours INTEGER DEFAULT 0`).catch(() => {});
       await runQuery(`ALTER TABLE users ADD COLUMN cumulative_weekend_shifts INTEGER DEFAULT 0`).catch(() => {});
       await runQuery(`ALTER TABLE users ADD COLUMN start_date INTEGER`).catch(() => {});
-      await runQuery(`ALTER TABLE users ADD COLUMN workload_start_mode TEXT DEFAULT 'NEXT_MONTH'`).catch(() => {});
+      await runQuery(`ALTER TABLE users ADD COLUMN workload_start_mode TEXT DEFAULT 'STAGGERED'`).catch(() => {});
+      // Migrate legacy default: existing rows still set to 'NEXT_MONTH' as a system default
+      // (rather than an explicit admin choice) get bumped to STAGGERED, the new fair-share default.
+      // This is a no-op when the column doesn't exist yet — runQuery swallows errors.
+      await runQuery(`UPDATE users SET workload_start_mode = 'STAGGERED' WHERE workload_start_mode IS NULL OR workload_start_mode = ''`).catch(() => {});
 
       // Departments table (multi-tenant: each has unique code)
       await runQuery(`
@@ -145,7 +149,7 @@ export class Database {
           id TEXT PRIMARY KEY,
           department_id TEXT NOT NULL,
           doctor_id TEXT NOT NULL,
-          type TEXT NOT NULL CHECK(type IN ('UNAVAILABLE', 'SWAP', 'LEAVE', 'PREFERRED_WORK')),
+          type TEXT NOT NULL CHECK(type IN ('UNAVAILABLE', 'SWAP', 'LEAVE', 'PREFERRED_WORK', 'POST_CALL_OFF')),
           date TEXT NOT NULL,
           status TEXT NOT NULL CHECK(status IN ('PENDING', 'APPROVED', 'REJECTED')),
           reason TEXT,
@@ -190,8 +194,8 @@ export class Database {
       `);
 
       // Migration: existing DBs may have rosters/requests without department_id
-      const rosterInfo = await this.get('PRAGMA table_info(rosters)').catch(() => null);
-      const hasDeptCol = rosterInfo && Array.isArray(rosterInfo) && rosterInfo.some((c: any) => c.name === 'department_id');
+      const rosterInfo = await this.all('PRAGMA table_info(rosters)').catch(() => null);
+      const hasDeptCol = Array.isArray(rosterInfo) && rosterInfo.some((c: any) => c.name === 'department_id');
       if (!hasDeptCol && rosterInfo) {
         const defaultId = 'dept-default-' + Date.now();
         const defaultCode = 'LEGACY';
@@ -201,7 +205,8 @@ export class Database {
           'INSERT OR IGNORE INTO departments (id, code, name, created_at, created_by) VALUES (?, ?, ?, ?, NULL)',
           [defaultId, defaultCode, 'Default (migrated)', now]
         );
-        // Clean up any partial previous migration before recreating helper tables
+        // Clean up any partial previous migration before recreating helper tables.
+        // Use IF NOT EXISTS on create to be safe against concurrent service starts.
         await this.run('DROP TABLE IF EXISTS rosters_new');
         await this.run(
           'CREATE TABLE rosters_new (id TEXT PRIMARY KEY, department_id TEXT NOT NULL, month INTEGER NOT NULL, year INTEGER NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(department_id, month, year))'
@@ -215,8 +220,8 @@ export class Database {
         );
         await this.run('DROP TABLE rosters');
         await this.run('ALTER TABLE rosters_new RENAME TO rosters');
-        const reqInfo = await this.get('PRAGMA table_info(requests)').catch(() => null);
-        const reqHasDept = reqInfo && Array.isArray(reqInfo) && reqInfo.some((c: any) => c.name === 'department_id');
+        const reqInfo = await this.all('PRAGMA table_info(requests)').catch(() => null);
+        const reqHasDept = Array.isArray(reqInfo) && reqInfo.some((c: any) => c.name === 'department_id');
         if (!reqHasDept && reqInfo) {
           await this.run('DROP TABLE IF EXISTS requests_new');
           await this.run(
@@ -241,6 +246,7 @@ export class Database {
         // migration below will recreate it with the right shape.
         const fairnessInfoEarly = await this.all('PRAGMA table_info(fairness_settings)').catch(() => null);
         const hasDeptInFairnessEarly = Array.isArray(fairnessInfoEarly) && fairnessInfoEarly.some((c: any) => c.name === 'department_id');
+
         if (hasDeptInFairnessEarly) {
           const oldFairness = await this.get('SELECT hour_diff_limit, weekend_diff_limit, created_at, updated_at FROM fairness_settings WHERE id = 1').catch(() => null);
           const hLimit = oldFairness?.hour_diff_limit ?? 24;
@@ -255,8 +261,8 @@ export class Database {
       }
 
       // Legacy: if fairness_settings has old schema (id=1), migrate to department-scoped
-      const fairnessCols = await this.get('PRAGMA table_info(fairness_settings)').catch(() => null);
-      const hasDeptInFairness = fairnessCols && Array.isArray(fairnessCols) && fairnessCols.some((c: any) => c.name === 'department_id');
+      const fairnessCols = await this.all('PRAGMA table_info(fairness_settings)').catch(() => null);
+      const hasDeptInFairness = Array.isArray(fairnessCols) && fairnessCols.some((c: any) => c.name === 'department_id');
       if (!hasDeptInFairness && fairnessCols) {
         await this.run(
           'CREATE TABLE IF NOT EXISTS fairness_settings_new (id INTEGER PRIMARY KEY AUTOINCREMENT, department_id TEXT NOT NULL UNIQUE, hour_diff_limit INTEGER NOT NULL DEFAULT 24, weekend_diff_limit INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)'
@@ -277,20 +283,29 @@ export class Database {
       // Migration: add new fairness_settings columns for existing databases
       await runQuery(`ALTER TABLE fairness_settings ADD COLUMN max_shifts_per_7_days INTEGER NOT NULL DEFAULT 2`).catch(() => {});
       await runQuery(`ALTER TABLE fairness_settings ADD COLUMN allow_consecutive_shifts INTEGER NOT NULL DEFAULT 0`).catch(() => {});
+      // min_rest_days replaces allow_consecutive_shifts as the canonical setting:
+      //   0 = consecutive ok | 1 = no consecutive (default) | 2+ = require additional rest days
+      await runQuery(`ALTER TABLE fairness_settings ADD COLUMN min_rest_days INTEGER NOT NULL DEFAULT 1`).catch(() => {});
 
-      // Migration: update requests CHECK constraint to include PREFERRED_WORK.
-      // SQLite doesn't support ALTER COLUMN, so we recreate the table if needed.
+      // Migration: extend requests CHECK constraint to include the latest request types
+      // (PREFERRED_WORK, POST_CALL_OFF). SQLite doesn't support ALTER COLUMN, so we recreate
+      // the table whenever the existing CHECK is missing any of them.
       const reqTableDef = await this.get(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='requests'"
       ).catch(() => null);
-      if (reqTableDef?.sql && !reqTableDef.sql.includes('PREFERRED_WORK')) {
+      const needsRequestsRebuild =
+        reqTableDef?.sql && (
+          !reqTableDef.sql.includes('PREFERRED_WORK') ||
+          !reqTableDef.sql.includes('POST_CALL_OFF')
+        );
+      if (needsRequestsRebuild) {
         await this.run('DROP TABLE IF EXISTS requests_migration_temp');
         await this.run(`
           CREATE TABLE requests_migration_temp (
             id TEXT PRIMARY KEY,
             department_id TEXT NOT NULL,
             doctor_id TEXT NOT NULL,
-            type TEXT NOT NULL CHECK(type IN ('UNAVAILABLE', 'SWAP', 'LEAVE', 'PREFERRED_WORK')),
+            type TEXT NOT NULL CHECK(type IN ('UNAVAILABLE', 'SWAP', 'LEAVE', 'PREFERRED_WORK', 'POST_CALL_OFF')),
             date TEXT NOT NULL,
             status TEXT NOT NULL CHECK(status IN ('PENDING', 'APPROVED', 'REJECTED')),
             reason TEXT,

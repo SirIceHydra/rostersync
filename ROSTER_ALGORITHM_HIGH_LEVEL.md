@@ -139,14 +139,29 @@ If not, it generates warnings for you to review.
 
 ---
 
+## Department admin settings (Balance page)
+
+Admins can change four department-wide rules from the in-app **Balance** screen. They are saved per department and used the next time a roster is generated or regenerated, and they decide when amber “please review” messages appear.
+
+| Setting (plain language) | What it affects |
+|--------------------------|----------------|
+| **Monthly hours spread** | Largest allowed gap between the person with the **most** on-call hours this month and the person with the **least**, in **one calendar month** only. Also caps how far the “evening out” pass can move weeknight assignments. |
+| **Weekend nights spread** | How many **extra** Saturday/Sunday on-call blocks one person may have compared with whoever has the fewest, in the same month, before a review message. |
+| **Minimum clear days between nights** | Whole calendar days off between on-call nights for the same person. Zero means back-to-back nights are allowed only for severely short-staffed teams. |
+| **Most nights in any rolling week** | Caps on-call nights in any sliding 7-day window so nobody stacks too many shifts in one week. |
+
+**Not on this screen:** How a **brand-new colleague** first enters the rota (e.g. full pace from week one vs starting next month) is set on their **Staff** profile, not under Balance.
+
+---
+
 ## Key Concepts Explained
 
 ### What Makes Someone "Eligible"?
 
 A doctor is eligible for a shift if:
-- They're not on approved leave or unavailable
-- They didn't work yesterday
-- They haven't worked 2 shifts in the last 7 days
+- They're not on approved leave (and soft unavailability is still respected when possible)
+- They have had enough clear days since their last on-call night (admin sets how many)
+- They are under the cap for how many on-call nights anyone may carry in a rolling week (also admin-set; default is two)
 
 ### How "Fairness" is Determined
 

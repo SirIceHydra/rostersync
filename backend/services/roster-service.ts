@@ -116,7 +116,7 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
       cumulativeTotalHours: d.cumulative_total_hours || 0,
       cumulativeWeekendShifts: d.cumulative_weekend_shifts || 0,
       startDate: d.start_date || null,
-      workloadStartMode: (d.workload_start_mode as 'IMMEDIATE' | 'NEXT_MONTH') || 'NEXT_MONTH'
+      workloadStartMode: (d.workload_start_mode as 'IMMEDIATE' | 'STAGGERED' | 'NEXT_MONTH') || 'STAGGERED'
     }));
 
     const requestsFormatted = requests.map(r => ({
@@ -135,10 +135,16 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
       `SELECT hour_diff_limit as hourLimit,
               weekend_diff_limit as weekendLimit,
               max_shifts_per_7_days as maxShiftsPer7Days,
-              allow_consecutive_shifts as allowConsecutiveShifts
+              allow_consecutive_shifts as allowConsecutiveShifts,
+              min_rest_days as minRestDays
        FROM fairness_settings WHERE department_id = ?`,
       [departmentId]
     ).catch(() => null);
+
+    // Resolve min rest days. Prefer the new column; fall back to legacy boolean toggle.
+    const resolvedMinRestDays = (settings?.minRestDays ?? null) !== null
+      ? settings.minRestDays
+      : (settings?.allowConsecutiveShifts === 1 ? 0 : 1);
 
     // Generate roster using current fairness configuration
     const { roster, report } = RosterEngine.generate(
@@ -150,24 +156,30 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
         maxHourDiff: settings?.hourLimit ?? 24,
         maxWeekendDiff: settings?.weekendLimit ?? 1,
         maxShiftsPer7Days: settings?.maxShiftsPer7Days ?? 2,
-        allowConsecutiveShifts: settings?.allowConsecutiveShifts === 1
+        minRestDays: resolvedMinRestDays
       }
     );
 
-    // Check if roster exists for this department
-    const existing = await db.get(
-      'SELECT id FROM rosters WHERE department_id = ? AND year = ? AND month = ?',
-      [departmentId, targetYear, targetMonth]
-    );
-
-    // Use an existing roster ID if present; otherwise create a new unique ID
-    const rosterId = existing?.id || `roster-${departmentId}-${targetYear}-${targetMonth}`;
+    // Compute the canonical roster ID for this department+month+year
+    const tentativeRosterId = `roster-${departmentId}-${targetYear}-${targetMonth}`;
     const nowTimestamp = Date.now();
 
+    // Find existing roster by either dept+month+year OR by the computed id.
+    // The OR handles historical data inconsistencies where the id was generated
+    // with a different department ID than what is stored in the department_id column.
+    const existing = await db.get(
+      `SELECT id FROM rosters
+       WHERE (department_id = ? AND year = ? AND month = ?) OR id = ?`,
+      [departmentId, targetYear, targetMonth, tentativeRosterId]
+    ) as { id: string } | undefined;
+
+    const rosterId = existing?.id ?? tentativeRosterId;
+
     if (existing) {
+      // Update the existing roster, correcting department_id if it was historically mismatched
       await db.run(
-        'UPDATE rosters SET status = ?, updated_at = ? WHERE id = ?',
-        [roster.status, nowTimestamp, rosterId]
+        'UPDATE rosters SET department_id = ?, status = ?, updated_at = ? WHERE id = ?',
+        [departmentId, roster.status, nowTimestamp, rosterId]
       );
       await db.run('DELETE FROM shifts WHERE roster_id = ?', [rosterId]);
     } else {

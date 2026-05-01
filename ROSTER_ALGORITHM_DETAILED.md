@@ -109,11 +109,13 @@ Public holiday hours are tracked cumulatively across years (not reset monthly). 
 | `year` | `number` | Yes | Year to generate (e.g., 2025) |
 | `doctors` | `User[]` | Yes | Array of all doctors in the department |
 | `requests` | `Request[]` | Yes | Array of all requests (includes PENDING, APPROVED, REJECTED) |
-| `config` | Object | No | Configuration overrides: `{ maxHourDiff?: 24, maxWeekendDiff?: 1 }` |
+| `config` | Object | No | Overrides from `fairness_settings` / admin **Balance** UI: `{ maxHourDiff?, maxWeekendDiff?, maxShiftsPer7Days?, minRestDays?, allowConsecutiveShifts? }` |
 
-#### Config Defaults
-- `maxHourDiff`: 24 hours (≤ 1 shift difference acceptable)
-- `maxWeekendDiff`: 1 shift (weekend shifts should differ by ≤1 between doctors)
+#### Config defaults (department DB / UI)
+- `maxHourDiff` (`hour_diff_limit`): 24 — max spread in **monthly** on-call hours between busiest and lightest doctor; also caps post-pass hour balancing.
+- `maxWeekendDiff` (`weekend_diff_limit`): 1 — max extra weekend shifts one doctor may have vs the minimum in that month before a warning.
+- `maxShiftsPer7Days` (`max_shifts_per_7_days`): 2 — max on-call shifts in any rolling 7-day window.
+- `minRestDays` (`min_rest_days`): 1 — minimum whole days between on-call nights; `0` allows consecutive nights (short-staffing). Legacy `allow_consecutive_shifts` maps to `minRestDays === 0`.
 
 ### Filtering Input Requests
 

@@ -11,7 +11,7 @@ export const SHIFT_TEMPLATES: ShiftTemplate[] = [
   },
   {
     id: 'weekend',
-    name: 'Weekend 24h',
+    name: 'Weekend',
     startTime: '08:00',
     endTime: '08:00',
     totalHours: 24,

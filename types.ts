@@ -8,7 +8,10 @@ export enum RequestType {
   UNAVAILABLE = 'UNAVAILABLE',
   SWAP = 'SWAP',
   LEAVE = 'LEAVE',
-  PREFERRED_WORK = 'PREFERRED_WORK'  // Doctor requests to be assigned on this day
+  PREFERRED_WORK = 'PREFERRED_WORK',  // Doctor requests to be assigned on this day
+  POST_CALL_OFF = 'POST_CALL_OFF'    // Doctor requests this day OFF (e.g. for personal commitments
+                                      // or recovery). Algorithm tries to give them the day BEFORE
+                                      // (the call day) so they're naturally post-call.
 }
 
 export enum RequestStatus {
@@ -27,7 +30,16 @@ export interface User {
   cumulativeTotalHours?: number;      // Total hours worked across all published months
   cumulativeWeekendShifts?: number;   // Weekend shifts across all published months
   startDate?: number;                  // When the doctor joined (timestamp)
-  workloadStartMode?: 'IMMEDIATE' | 'NEXT_MONTH'; // Admin-set: IMMEDIATE = full load from month 1, NEXT_MONTH = reduced first month
+  /**
+   * Admin-set onboarding mode for new joiners.
+   *  - IMMEDIATE   : full strength from day one (no protection at all)
+   *  - STAGGERED   : compete fairly using team-median cumulative as a fair-share floor (default)
+   *  - NEXT_MONTH  : zero shifts in the joining month, full strength from the next month
+   *
+   * Legacy databases used 'IMMEDIATE' | 'NEXT_MONTH'. STAGGERED is now the recommended default
+   * because it places the new joiner mid-pack rather than artificially lighter or heavier.
+   */
+  workloadStartMode?: 'IMMEDIATE' | 'STAGGERED' | 'NEXT_MONTH';
 }
 
 export interface ShiftTemplate {

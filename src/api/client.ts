@@ -149,6 +149,16 @@ class ApiClient {
     });
   }
 
+  async patchUser(
+    id: string,
+    body: Partial<{ name: string; firm: string; cumulativeHolidayHours: number; workloadStartMode: string }>
+  ) {
+    return this.request<any>(`/api/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+  }
+
   // Rosters
   async getRoster(year: number, month: number) {
     return this.request<any>(`/api/rosters/${year}/${month}`);
@@ -206,13 +216,30 @@ class ApiClient {
   }
 
   async getFairnessSettings() {
-    return this.request<{ hourLimit: number; weekendLimit: number }>('/api/analytics/fairness-settings');
+    return this.request<{
+      hourLimit: number;
+      weekendLimit: number;
+      maxShiftsPer7Days: number;
+      minRestDays: number;
+      allowConsecutiveShifts?: boolean;
+    }>('/api/analytics/fairness-settings');
   }
 
-  async updateFairnessSettings(hourLimit: number, weekendLimit: number) {
-    return this.request<{ success: boolean; hourLimit: number; weekendLimit: number }>('/api/analytics/fairness-settings', {
+  async updateFairnessSettings(settings: {
+    hourLimit: number;
+    weekendLimit: number;
+    maxShiftsPer7Days: number;
+    minRestDays: number;
+  }) {
+    return this.request<{
+      success: boolean;
+      hourLimit: number;
+      weekendLimit: number;
+      maxShiftsPer7Days: number;
+      minRestDays: number;
+    }>('/api/analytics/fairness-settings', {
       method: 'PUT',
-      body: JSON.stringify({ hourLimit, weekendLimit }),
+      body: JSON.stringify(settings),
     });
   }
 }
