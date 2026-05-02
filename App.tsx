@@ -914,7 +914,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="relative flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 sm:p-5 max-w-lg md:max-w-rs md:px-10 mx-auto w-full space-y-6 animate-in fade-in duration-500 pb-2">
+      <main className="relative flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 sm:p-5 max-w-lg md:max-w-rs md:px-10 mx-auto w-full space-y-6 animate-in fade-in duration-500 pb-24 md:pb-20">
         {loading && (
           <div
             className="no-print absolute inset-0 z-40 flex flex-col items-center justify-start pt-28 bg-white/55 backdrop-blur-[2px] transition-opacity duration-200"
@@ -1031,16 +1031,31 @@ export default function App() {
         style={{ boxShadow: '0 -4px 24px rgba(244,124,32,0.08)' }}
         aria-label="Quick navigation"
       >
-        {/* Mobile: three primary shortcuts */}
-        <div className="flex md:hidden flex-row justify-around items-stretch w-full pt-2 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] border-t border-slate-100">
-          <TabItem active={view === 'DASHBOARD'} icon={<House size={20} />} label="Home" onClick={() => goNav('DASHBOARD')} />
-          <TabItem active={view === 'ROSTER'} icon={<Calendar size={20} />} label="Roster" onClick={() => goNav('ROSTER')} />
-          <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={20} />} label="Requests" onClick={() => goNav('REQUESTS')} />
-        </div>
+        {/* Mobile: scrollable full tab row */}
+        {isDeptAdmin ? (
+          <div className="flex md:hidden flex-row items-stretch w-full overflow-x-auto scrollbar-hide pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom,0px))]">
+            <TabItem active={view === 'DASHBOARD'} icon={<House size={19} />} label="Home" onClick={() => goNav('DASHBOARD')} />
+            <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => goNav('ROSTER')} />
+            <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => goNav('REQUESTS')} />
+            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => goNav('ANALYTICS')} />
+            <TabItem active={view === 'DOCTORS'} icon={<Users size={19} />} label="Staff" onClick={() => goNav('DOCTORS')} />
+            <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => goNav('TUNING')} />
+            <TabItem active={view === 'ARCHIVE'} icon={<Archive size={19} />} label="Past" onClick={() => goNav('ARCHIVE')} />
+          </div>
+        ) : (
+          <div className="flex md:hidden flex-row items-stretch w-full overflow-x-auto scrollbar-hide pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom,0px))]">
+            <TabItem active={view === 'DASHBOARD'} icon={<House size={19} />} label="Home" onClick={() => goNav('DASHBOARD')} />
+            <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => goNav('ROSTER')} />
+            <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => goNav('REQUESTS')} />
+            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => goNav('ANALYTICS')} />
+            <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => goNav('TUNING')} />
+            <TabItem active={view === 'ARCHIVE'} icon={<Archive size={19} />} label="Past" onClick={() => goNav('ARCHIVE')} />
+          </div>
+        )}
 
         {/* md+: full tab bar */}
         {isDeptAdmin ? (
-          <div className="hidden md:flex flex-row justify-around items-stretch w-full py-2.5 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom,0px))] border-t border-slate-100">
+          <div className="hidden md:flex flex-row justify-around items-stretch w-full py-2.5 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom,0px))]">
             <TabItem active={view === 'DASHBOARD'} icon={<House size={19} />} label="Home" onClick={() => goNav('DASHBOARD')} />
             <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => goNav('ROSTER')} />
             <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => goNav('ANALYTICS')} />
@@ -1050,7 +1065,7 @@ export default function App() {
             <TabItem active={view === 'ARCHIVE'} icon={<Archive size={19} />} label="Past" onClick={() => goNav('ARCHIVE')} />
           </div>
         ) : (
-          <div className="hidden md:flex flex-row justify-around items-stretch w-full py-2 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] border-t border-slate-100">
+          <div className="hidden md:flex flex-row justify-around items-stretch w-full py-2 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]">
             <TabItem active={view === 'DASHBOARD'} icon={<House size={19} />} label="Home" onClick={() => goNav('DASHBOARD')} />
             <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => goNav('ROSTER')} />
             <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => goNav('ANALYTICS')} />
@@ -1074,10 +1089,10 @@ const TabItem: React.FC<{
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 max-w-[6.5rem] min-h-[52px] md:min-h-[48px] py-2 md:py-1.5 touch-manipulation transition-colors ${active ? 'text-indigo-600' : 'text-slate-400'}`}
+      className={`flex flex-col items-center justify-center gap-0.5 flex-1 shrink-0 min-w-[4rem] max-w-[6.5rem] md:min-w-0 min-h-[52px] md:min-h-[48px] py-2 md:py-1.5 touch-manipulation transition-colors ${active ? 'text-indigo-600' : 'text-slate-400'}`}
     >
       <div className={`rounded-2xl shrink-0 transition-all p-1 md:p-1.5 ${active ? 'bg-indigo-50' : ''}`}>{icon}</div>
-      <span className="text-[8px] md:text-[8px] font-extrabold uppercase tracking-wide text-center leading-tight px-0.5 line-clamp-2 break-words w-full">
+      <span className="text-[10px] md:text-[9px] font-extrabold uppercase tracking-wide text-center leading-tight px-0.5 line-clamp-1 w-full">
         {label}
       </span>
     </button>
@@ -1362,37 +1377,39 @@ const DashboardView: React.FC<{
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <h1 className="rs-h2 text-slate-900 tracking-tight">Overview</h1>
           {/* Month Toggle */}
           <div className="flex bg-slate-100 rounded-2xl p-1 gap-0.5">
             <button
               type="button"
               onClick={() => onChangeMonth(0)}
-              className={`px-4 py-2.5 min-h-11 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all touch-manipulation ${
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 min-h-10 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all touch-manipulation ${
                 selectedMonthOffset === 0
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              This Month
+              <span className="sm:hidden">This</span>
+              <span className="hidden sm:inline">This Month</span>
             </button>
             <button
               type="button"
               onClick={() => onChangeMonth(1)}
-              className={`px-4 py-2.5 min-h-11 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all touch-manipulation ${
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 min-h-10 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all touch-manipulation ${
                 selectedMonthOffset === 1
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              Next Month
+              <span className="sm:hidden">Next</span>
+              <span className="hidden sm:inline">Next Month</span>
             </button>
           </div>
         </div>
         {isAdmin && (
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               onClick={onRegenerate}
               variant="secondary"
@@ -1901,7 +1918,7 @@ const RosterView: React.FC<{
                     Reassign {new Date(sh.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} — {cur?.name ?? 'Unassigned'}
                   </p>
                   <p className="text-[8px] font-bold text-slate-500 mb-3">Choose replacement doctor</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {doctors.map((d) => (
                       <button
                         key={d.id}
@@ -2148,20 +2165,20 @@ const RosterView: React.FC<{
               return (
                 <div key={s.id} className="space-y-2">
                   <Card className={isMe ? 'border-2 border-indigo-600 ring-4 ring-indigo-50/50' : ''}>
-                    <div className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl ${isMe ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    <div className="p-4 flex items-center justify-between gap-2 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center font-black text-lg ${isMe ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
                           {getInitials(doc?.name || doc?.id, '?')}
                         </div>
-                        <div>
-                          <div className="text-base font-black text-slate-900 leading-none">{doc?.name || 'Unassigned'}</div>
+                        <div className="min-w-0">
+                          <div className="text-sm sm:text-base font-black text-slate-900 leading-none truncate">{doc?.name || 'Unassigned'}</div>
                           <div className="text-[10px] text-slate-500 font-bold mt-1.5 uppercase tracking-tighter">{t?.startTime} - {t?.endTime}</div>
                         </div>
                       </div>
-                      <div className="text-right flex flex-col items-end gap-2">
+                      <div className="shrink-0 flex flex-col items-end gap-2">
                         <Badge color={s.isPublicHoliday ? 'red' : 'indigo'}>{t?.name}</Badge>
                         {isAdmin && roster && (
-                          <button 
+                          <button
                             type="button"
                             onClick={() => setEditingShiftId(editingShiftId === s.id ? null : s.id)}
                             className="min-h-10 px-2 rounded-xl text-[9px] font-black text-indigo-600 uppercase tracking-widest inline-flex items-center justify-center gap-1 ring-1 ring-indigo-200 bg-indigo-50/80 touch-manipulation active:bg-indigo-100"
@@ -2418,15 +2435,15 @@ const AnalyticsView: React.FC<{
           )}
         </p>
         <div className="overflow-x-auto">
-        <table className="w-full text-left min-w-[320px]">
+        <table className="w-full text-left min-w-[280px]">
           <thead className="text-[9px] font-black text-slate-400 uppercase bg-slate-50 border-b border-slate-100">
             <tr>
-              <th className="px-3 sm:px-5 py-3 whitespace-nowrap">Doctor</th>
-              <th className="px-3 sm:px-5 py-3 whitespace-nowrap">This month</th>
-              <th className="px-3 sm:px-5 py-3">
+              <th className="px-2 sm:px-5 py-3 whitespace-nowrap">Doctor</th>
+              <th className="px-2 sm:px-5 py-3 whitespace-nowrap">This month</th>
+              <th className="hidden sm:table-cell px-2 sm:px-5 py-3">
                 {fhT.isCalendarYear ? `Published in ${schedYear} (hrs)` : 'Published history (hrs)'}
               </th>
-              <th className="px-3 sm:px-5 py-3 text-right whitespace-nowrap min-w-[5.5rem] sm:min-w-0">Standing</th>
+              <th className="px-2 sm:px-5 py-3 text-right whitespace-nowrap">Standing</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -2439,10 +2456,10 @@ const AnalyticsView: React.FC<{
                 const shiftWord = n === 1 ? 'shift' : 'shifts';
                 return (
                   <tr key={doc.id} className="text-[10px] sm:text-[11px] font-bold text-slate-700">
-                    <td className="px-3 sm:px-5 py-3 sm:py-4 max-w-[120px] break-words">{doc.name}</td>
-                    <td className="px-3 sm:px-5 py-3 sm:py-4 font-black whitespace-nowrap">{n} {shiftWord} ({monthPHHours} hrs)</td>
-                    <td className="px-3 sm:px-5 py-3 sm:py-4 font-black whitespace-nowrap">{(doc.cumulativeHolidayHours ?? 0)} hrs</td>
-                    <td className="px-3 sm:px-5 py-3 sm:py-4 text-right align-middle whitespace-nowrap min-w-[5.25rem]">
+                    <td className="px-2 sm:px-5 py-3 sm:py-4 max-w-[100px] sm:max-w-[120px] break-words">{doc.name}</td>
+                    <td className="px-2 sm:px-5 py-3 sm:py-4 font-black whitespace-nowrap">{n} {shiftWord}<span className="hidden sm:inline"> ({monthPHHours} hrs)</span></td>
+                    <td className="hidden sm:table-cell px-2 sm:px-5 py-3 sm:py-4 font-black whitespace-nowrap">{(doc.cumulativeHolidayHours ?? 0)} hrs</td>
+                    <td className="px-2 sm:px-5 py-3 sm:py-4 text-right align-middle whitespace-nowrap">
                       {(doc.cumulativeHolidayHours ?? 0) === 0 ? (
                         <Badge
                           color="green"
