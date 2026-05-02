@@ -13,10 +13,10 @@ import { SHIFT_TEMPLATES } from './constants';
 import { api, type Department } from './src/api/client';
 import { LoginForm } from './src/components/LoginForm';
 import { 
-  Calendar, 
-  ShieldCheck, 
-  BarChart3, 
-  AlertCircle, 
+  Calendar,
+  ShieldCheck,
+  BarChart3,
+  AlertCircle,
   CheckCircle2,
   Plus,
   LogOut,
@@ -34,7 +34,10 @@ import {
   Loader2,
   SlidersHorizontal,
   Menu,
-  Archive
+  Archive,
+  Link2,
+  UserX,
+  CircleDashed
 } from 'lucide-react';
 
 // --- Production UI Components ---
@@ -577,7 +580,8 @@ export default function App() {
         type: req.type,
         date: req.date,
         reason: req.reason,
-        swapWithDoctorId: req.swapWithDoctorId
+        swapWithDoctorId: req.swapWithDoctorId,
+        doctorId: req.doctorId !== currentUser?.id ? req.doctorId : undefined,
       });
       setRequests([...requests, newReq]);
     } catch (error: any) {
@@ -655,6 +659,26 @@ export default function App() {
     } catch (error: any) {
       setApiError(error.message);
       console.error('Failed to delete doctor:', error);
+    }
+  };
+
+  const handleAddPlaceholder = async (name: string, firm: string) => {
+    try {
+      const newDoc = await api.addPlaceholder(name, firm);
+      setDoctors(prev => [...prev, newDoc]);
+    } catch (error: any) {
+      setApiError(error.message);
+    }
+  };
+
+  const handleLinkPlaceholder = async (placeholderId: string, realUserId: string) => {
+    try {
+      const updated = await api.linkPlaceholder(placeholderId, realUserId);
+      setDoctors(prev => prev.map(d => d.id === placeholderId ? updated : d).filter(d => d.id !== placeholderId));
+      const fresh = await api.getDoctors().catch(() => null);
+      if (fresh) setDoctors(fresh);
+    } catch (error: any) {
+      setApiError(error.message);
     }
   };
 
@@ -804,8 +828,8 @@ export default function App() {
           </button>
         </div>
 
-        <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 md:gap-1.5 self-stretch py-0.5 md:px-4">
-          <div className="flex w-full min-w-0 flex-wrap items-center justify-center gap-x-2 gap-y-1.5 sm:gap-x-3 md:gap-x-5 lg:gap-x-8 md:max-w-4xl md:mx-auto">
+        <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 md:gap-1.5 self-stretch py-0.5 md:px-4 overflow-hidden">
+          <div className="flex w-full min-w-0 items-center justify-center gap-x-2 gap-y-1 sm:gap-x-3 md:gap-x-5 lg:gap-x-8 md:max-w-4xl md:mx-auto flex-wrap">
             {departments.length > 1 ? (
               <div className="relative max-w-full min-w-0 flex justify-center">
                 <button
@@ -851,7 +875,7 @@ export default function App() {
                 <span className="text-[9px] underline sm:text-[10px]">Copy</span>
               </button>
             )}
-            <span className="min-w-0 max-w-full shrink truncate text-[10px] font-bold text-slate-500 sm:max-w-[14rem] md:max-w-xs md:text-xs">
+            <span className="hidden sm:inline min-w-0 max-w-[14rem] md:max-w-xs shrink truncate text-[10px] font-bold text-slate-500 md:text-xs">
               <span className="text-slate-300 md:mr-1.5">•</span>
               {currentUser.name}
             </span>
@@ -914,7 +938,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="relative flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 sm:p-5 max-w-lg md:max-w-rs md:px-10 mx-auto w-full space-y-6 animate-in fade-in duration-500 pb-24 md:pb-20">
+      <main className="relative flex-1 overflow-y-auto overflow-x-hidden touch-pan-y px-3 py-4 sm:px-5 sm:py-5 max-w-lg md:max-w-rs md:px-10 mx-auto w-full min-w-0 space-y-5 animate-in fade-in duration-500 pb-24 md:pb-20">
         {loading && (
           <div
             className="no-print absolute inset-0 z-40 flex flex-col items-center justify-start pt-28 bg-white/55 backdrop-blur-[2px] transition-opacity duration-200"
@@ -999,10 +1023,12 @@ export default function App() {
           />
         )}
         {view === 'DOCTORS' && (
-          <DoctorsView 
+          <DoctorsView
             doctors={doctors}
             onAdd={handleAddDoctor}
             onDelete={handleDeleteDoctor}
+            onAddPlaceholder={handleAddPlaceholder}
+            onLinkPlaceholder={handleLinkPlaceholder}
             onRefresh={async () => {
               if (!useBackend) return;
               try {
@@ -1013,6 +1039,7 @@ export default function App() {
               }
             }}
             isAdmin={currentUser.role === Role.ADMIN}
+            useBackend={useBackend}
           />
         )}
         {view === 'TUNING' && (
@@ -1031,27 +1058,12 @@ export default function App() {
         style={{ boxShadow: '0 -4px 24px rgba(244,124,32,0.08)' }}
         aria-label="Quick navigation"
       >
-        {/* Mobile: scrollable full tab row */}
-        {isDeptAdmin ? (
-          <div className="flex md:hidden flex-row items-stretch w-full overflow-x-auto scrollbar-hide pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom,0px))]">
-            <TabItem active={view === 'DASHBOARD'} icon={<House size={19} />} label="Home" onClick={() => goNav('DASHBOARD')} />
-            <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => goNav('ROSTER')} />
-            <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => goNav('REQUESTS')} />
-            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => goNav('ANALYTICS')} />
-            <TabItem active={view === 'DOCTORS'} icon={<Users size={19} />} label="Staff" onClick={() => goNav('DOCTORS')} />
-            <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => goNav('TUNING')} />
-            <TabItem active={view === 'ARCHIVE'} icon={<Archive size={19} />} label="Past" onClick={() => goNav('ARCHIVE')} />
-          </div>
-        ) : (
-          <div className="flex md:hidden flex-row items-stretch w-full overflow-x-auto scrollbar-hide pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom,0px))]">
-            <TabItem active={view === 'DASHBOARD'} icon={<House size={19} />} label="Home" onClick={() => goNav('DASHBOARD')} />
-            <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => goNav('ROSTER')} />
-            <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => goNav('REQUESTS')} />
-            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => goNav('ANALYTICS')} />
-            <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => goNav('TUNING')} />
-            <TabItem active={view === 'ARCHIVE'} icon={<Archive size={19} />} label="Past" onClick={() => goNav('ARCHIVE')} />
-          </div>
-        )}
+        {/* Mobile: 3 primary tabs — rest live in the hamburger drawer */}
+        <div className="flex md:hidden flex-row justify-around items-stretch w-full pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]">
+          <TabItem active={view === 'DASHBOARD'} icon={<House size={20} />} label="Home" onClick={() => goNav('DASHBOARD')} />
+          <TabItem active={view === 'ROSTER'} icon={<Calendar size={20} />} label="Roster" onClick={() => goNav('ROSTER')} />
+          <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={20} />} label="Requests" onClick={() => goNav('REQUESTS')} />
+        </div>
 
         {/* md+: full tab bar */}
         {isDeptAdmin ? (
@@ -1089,10 +1101,10 @@ const TabItem: React.FC<{
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-0.5 flex-1 shrink-0 min-w-[4rem] max-w-[6.5rem] md:min-w-0 min-h-[52px] md:min-h-[48px] py-2 md:py-1.5 touch-manipulation transition-colors ${active ? 'text-indigo-600' : 'text-slate-400'}`}
+      className={`flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 min-h-[52px] md:min-h-[48px] py-2 md:py-1.5 touch-manipulation transition-colors ${active ? 'text-indigo-600' : 'text-slate-400'}`}
     >
       <div className={`rounded-2xl shrink-0 transition-all p-1 md:p-1.5 ${active ? 'bg-indigo-50' : ''}`}>{icon}</div>
-      <span className="text-[10px] md:text-[9px] font-extrabold uppercase tracking-wide text-center leading-tight px-0.5 line-clamp-1 w-full">
+      <span className="text-[10px] font-extrabold uppercase tracking-wide text-center leading-tight px-1 line-clamp-1 w-full">
         {label}
       </span>
     </button>
@@ -1501,7 +1513,7 @@ const DashboardView: React.FC<{
               <strong className="text-slate-800">Published vs draft:</strong> you only see a month after an admin publishes it. While it&apos;s still a draft, they can change the plan — your requests are still used when they build it.
             </p>
             <p>
-              <strong className="text-slate-800">“Full pace from week one”:</strong> an admin-only choice under <strong>Staff → First months on the rota</strong> for a named doctor. It tells the scheduler to treat a new colleague like an established teammate right away (no eased onboarding). Most people stay on <strong>standard</strong> pacing unless the department explicitly needs full load from month one.
+              <strong className="text-slate-800">"Full pace from week one":</strong> an admin-only choice under <strong>Staff → First months on the rota</strong> for a named doctor. It tells the scheduler to treat a new colleague like an established teammate right away (no eased onboarding). Most people stay on <strong>standard</strong> pacing unless the department explicitly needs full load from month one.
             </p>
           </div>
         </details>
@@ -1798,12 +1810,12 @@ const RosterView: React.FC<{
         )}
 
         <Card className="overflow-hidden">
-          <div className="w-full overflow-x-auto -mx-0">
-            <table className="w-full min-w-[280px] border-collapse table-fixed">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[300px] border-collapse table-fixed">
               <thead>
                 <tr className="bg-slate-50">
                   {dayNames.map(day => (
-                    <th key={day} className="p-1 sm:p-2 text-[8px] sm:text-[10px] font-black text-slate-600 uppercase tracking-tight sm:tracking-widest border-b border-slate-200 text-center">{day}</th>
+                    <th key={day} className="p-1 sm:p-2 text-[9px] sm:text-[10px] font-black text-slate-600 uppercase tracking-tight sm:tracking-widest border-b border-slate-200 text-center">{day}</th>
                   ))}
                 </tr>
               </thead>
@@ -1830,7 +1842,7 @@ const RosterView: React.FC<{
                       return (
                         <td
                           key={dayIdx}
-                          className={`p-1 sm:p-1.5 align-top border-r border-slate-100 last:border-r-0 min-w-0 min-h-[4.25rem] sm:min-h-[3.5rem] ${
+                          className={`p-1 align-top border-r border-slate-100 last:border-r-0 min-w-0 min-h-[3.5rem] ${
                             day < 1 || day > daysInMonth ? 'bg-slate-50' : 'bg-white'
                           } ${isToday ? 'ring-2 ring-inset ring-indigo-500' : ''} ${hasConflict ? 'bg-amber-50' : ''}`}
                         >
@@ -1851,7 +1863,7 @@ const RosterView: React.FC<{
                                 <button
                                   type="button"
                                   onClick={() => setCalendarEditingShiftId(calendarEditingShiftId === shift.id ? null : shift.id)}
-                                  className={`w-full rounded-md sm:rounded-lg text-left text-[8px] sm:text-[9px] font-bold transition-all min-h-[3rem] min-w-0 overflow-hidden p-2 touch-manipulation active:opacity-90 ${
+                                  className={`w-full rounded-md sm:rounded-lg text-left font-bold transition-all min-h-[2.5rem] min-w-0 overflow-hidden p-1.5 sm:p-2 touch-manipulation active:opacity-90 ${
                                     isMyShift
                                       ? 'bg-indigo-600 text-white'
                                       : shift.isPublicHoliday
@@ -1861,18 +1873,14 @@ const RosterView: React.FC<{
                                   title="Change doctor"
                                   aria-pressed={calendarEditingShiftId === shift.id}
                                 >
-                                  <div className="font-black leading-tight truncate" title={getDoctorName(shift.doctorId)}>
+                                  <div className="text-[9px] sm:text-[10px] font-black leading-tight truncate" title={getDoctorName(shift.doctorId)}>
                                     {getDoctorName(shift.doctorId).split(' ').pop()}
                                   </div>
-                                  <div className="text-[7px] sm:text-[8px] opacity-70 mt-0.5 leading-tight line-clamp-2 break-words">{shiftInfo.name}</div>
-                                  <div className="text-[7px] sm:text-[8px] opacity-55 leading-tight">{shiftInfo.totalHours}h</div>
-                                  {shift.isPublicHoliday && (
-                                    <div className="text-[6px] sm:text-[7px] font-black opacity-80 mt-0.5 truncate" title="Public holiday">PH</div>
-                                  )}
+                                  <div className="text-[8px] sm:text-[9px] opacity-70 mt-0.5 leading-tight truncate">{shiftInfo.totalHours}h{shift.isPublicHoliday ? ' · PH' : ''}</div>
                                 </button>
                               ) : (
                                 <div
-                                  className={`p-2 rounded-md sm:rounded-lg text-[8px] sm:text-[9px] font-bold min-w-0 overflow-hidden ${
+                                  className={`p-1.5 sm:p-2 rounded-md sm:rounded-lg font-bold min-w-0 overflow-hidden ${
                                     isMyShift
                                       ? 'bg-indigo-600 text-white'
                                       : shift.isPublicHoliday
@@ -1881,14 +1889,10 @@ const RosterView: React.FC<{
                                   }`}
                                   title={`${getDoctorName(shift.doctorId)} — ${shiftInfo.name}, ${shiftInfo.totalHours} hrs${shift.isPublicHoliday ? ' (public holiday)' : ''}`}
                                 >
-                                  <div className="font-black leading-tight truncate" title={getDoctorName(shift.doctorId)}>
+                                  <div className="text-[9px] sm:text-[10px] font-black leading-tight truncate" title={getDoctorName(shift.doctorId)}>
                                     {getDoctorName(shift.doctorId).split(' ').pop()}
                                   </div>
-                                  <div className="text-[7px] sm:text-[8px] opacity-70 mt-0.5 leading-tight line-clamp-2 break-words">{shiftInfo.name}</div>
-                                  <div className="text-[7px] sm:text-[8px] opacity-55 leading-tight">{shiftInfo.totalHours}h</div>
-                                  {shift.isPublicHoliday && (
-                                    <div className="text-[6px] sm:text-[7px] font-black opacity-80 mt-0.5 truncate" title="Public holiday">PH</div>
-                                  )}
+                                  <div className="text-[8px] sm:text-[9px] opacity-70 mt-0.5 leading-tight truncate">{shiftInfo.totalHours}h{shift.isPublicHoliday ? ' · PH' : ''}</div>
                                 </div>
                               ))}
                               {!shift && day >= 1 && day <= daysInMonth && (
@@ -2617,7 +2621,7 @@ const TuningView: React.FC<{
           {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
             <> For this department that workload is currently scoped to <strong>{fhActive.schedulingYear}</strong> (see <strong>Past nights</strong> below).</>
           ) : (
-            <> By default that workload is the <strong>full published record</strong>; you can switch to “this calendar year only” under <strong>Past nights</strong>.</>
+            <> By default that workload is the <strong>full published record</strong>; you can switch to "this calendar year only" under <strong>Past nights</strong>.</>
           )}
           {' '}To set how a <strong>new colleague</strong> enters the rota (first month vs full pace), use <strong>Staff</strong> — that choice is per person, not here.
         </p>
@@ -2836,7 +2840,7 @@ const TuningView: React.FC<{
             People coming back are not automatically handed an unfair overload the first month.
           </div>
           <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
-            <span className="font-bold text-amber-900 block mb-1">Many “prefer not” days</span>
+            <span className="font-bold text-amber-900 block mb-1">Many "prefer not" days</span>
             If several people mark the same dates, the schedule may still need someone — you may see a heads-up to decide manually.
           </div>
           <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
@@ -2852,9 +2856,9 @@ const TuningView: React.FC<{
           <p className="text-[9px] text-slate-500 font-bold mt-1">
             Snapshot for {rosterPeriodLabel} — badges describe workload shape, not clinical roles.
             {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
-              <> “High / low history” lines compare <strong>{fhActive.schedulingYear}</strong> published totals; all-time stays on <strong>Staff</strong>.</>
+              <> "High / low history" lines compare <strong>{fhActive.schedulingYear}</strong> published totals; all-time stays on <strong>Staff</strong>.</>
             ) : (
-              <> “High / low history” uses the <strong>full published record</strong>.</>
+              <> "High / low history" uses the <strong>full published record</strong>.</>
             )}
           </p>
         </div>
@@ -3044,7 +3048,7 @@ const RequestsView: React.FC<{
   doctors: User[];
 }> = ({ user, requests, onAdd, onStatusChange, doctors }) => {
   const [isAdding, setIsAdding] = useState(false);
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], type: RequestType.UNAVAILABLE, reason: '' });
+  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], type: RequestType.UNAVAILABLE, reason: '', forDoctorId: '' });
   const [timeFilter, setTimeFilter] = useState<RequestTimeFilter>('this_month');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'resolved'>('all');
   const isAdmin = user.role === Role.ADMIN;
@@ -3066,9 +3070,10 @@ const RequestsView: React.FC<{
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const targetDoctorId = isAdmin && formData.forDoctorId ? formData.forDoctorId : user.id;
     onAdd({
       id: Math.random().toString(36).substr(2, 9),
-      doctorId: user.id,
+      doctorId: targetDoctorId,
       type: formData.type,
       date: formData.date,
       status: RequestStatus.PENDING,
@@ -3076,7 +3081,7 @@ const RequestsView: React.FC<{
       createdAt: Date.now()
     });
     setIsAdding(false);
-    setFormData({ date: new Date().toISOString().split('T')[0], type: RequestType.UNAVAILABLE, reason: '' });
+    setFormData({ date: new Date().toISOString().split('T')[0], type: RequestType.UNAVAILABLE, reason: '', forDoctorId: '' });
   };
 
   return (
@@ -3154,10 +3159,25 @@ const RequestsView: React.FC<{
         <Card className="p-5 border-2 border-indigo-600 animate-in zoom-in-95">
           <form onSubmit={handleSubmit} className="space-y-4">
             <h4 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">New Leave/Preference</h4>
-            <div className="grid grid-cols-2 gap-3">
+            {isAdmin && (
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">For doctor</label>
+                <select
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none ring-indigo-500 focus:ring-2"
+                  value={formData.forDoctorId}
+                  onChange={e => setFormData({ ...formData, forDoctorId: e.target.value })}
+                >
+                  <option value="">Myself ({user.name})</option>
+                  {doctors.filter(d => d.id !== user.id).map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Type</label>
-                <select 
+                <select
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none ring-indigo-500 focus:ring-2"
                   value={formData.type}
                   onChange={e => setFormData({...formData, type: e.target.value as RequestType})}
@@ -3250,41 +3270,21 @@ const RequestsView: React.FC<{
                     {requestStatusLabel(req.status)}
                   </Badge>
                   {isAdmin && req.status === RequestStatus.PENDING && (
-                    <div className="flex flex-col items-stretch sm:items-end gap-2 w-full sm:w-auto">
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          type="button"
-                          aria-label="Approve request"
-                          onClick={() => onStatusChange(req.id, RequestStatus.APPROVED)}
-                          className="min-h-11 min-w-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 transition-colors hover:bg-emerald-100 touch-manipulation active:scale-95"
-                        >
-                          <CheckCircle2 size={20} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Decline request"
-                          onClick={() => onStatusChange(req.id, RequestStatus.REJECTED)}
-                          className="min-h-11 min-w-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 transition-colors hover:bg-rose-100 touch-manipulation active:scale-95"
-                        >
-                          <X size={20} />
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-2 justify-end">
-                        <button
-                          type="button"
-                          onClick={() => onStatusChange(req.id, RequestStatus.APPROVED)}
-                          className="min-h-10 px-3 rounded-xl bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wide border border-emerald-700 shadow-sm hover:bg-emerald-700 touch-manipulation active:scale-[0.98]"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onStatusChange(req.id, RequestStatus.REJECTED)}
-                          className="min-h-10 px-3 rounded-xl bg-white text-rose-700 text-[10px] font-black uppercase tracking-wide border border-rose-200 hover:bg-rose-50 touch-manipulation active:scale-[0.98]"
-                        >
-                          Decline
-                        </button>
-                      </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => onStatusChange(req.id, RequestStatus.APPROVED)}
+                        className="min-h-10 px-3 rounded-xl bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wide border border-emerald-700 shadow-sm hover:bg-emerald-700 touch-manipulation active:scale-[0.98]"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onStatusChange(req.id, RequestStatus.REJECTED)}
+                        className="min-h-10 px-3 rounded-xl bg-white text-rose-700 text-[10px] font-black uppercase tracking-wide border border-rose-200 hover:bg-rose-50 touch-manipulation active:scale-[0.98]"
+                      >
+                        Decline
+                      </button>
                     </div>
                   )}
                 </div>
@@ -3308,37 +3308,166 @@ const RequestsView: React.FC<{
   );
 };
 
-const DoctorsView: React.FC<{ 
-  doctors: User[]; 
-  onAdd: (d: User) => void; 
+const DoctorsView: React.FC<{
+  doctors: User[];
+  onAdd: (d: User) => void;
   onDelete: (id: string) => void;
+  onAddPlaceholder?: (name: string, firm: string) => Promise<void>;
+  onLinkPlaceholder?: (placeholderId: string, realUserId: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
   isAdmin: boolean;
-}> = ({ doctors, onAdd, onDelete, onRefresh, isAdmin }) => {
+  useBackend?: boolean;
+}> = ({ doctors, onAdd, onDelete, onAddPlaceholder, onLinkPlaceholder, onRefresh, isAdmin, useBackend }) => {
   const [isAdding, setIsAdding] = useState(false);
+  const [addMode, setAddMode] = useState<'email' | 'placeholder'>('email');
   const [email, setEmail] = useState('');
+  const [placeholderName, setPlaceholderName] = useState('');
+  const [placeholderFirm, setPlaceholderFirm] = useState('');
   const [pacingSavingId, setPacingSavingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const [unlinkedDoctors, setUnlinkedDoctors] = useState<Array<{ id: string; name: string; email: string; firm: string }>>([]);
+  const [selectedRealUserId, setSelectedRealUserId] = useState('');
+  const [linkBusy, setLinkBusy] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onAdd({
-      id: '',
-      name: '',
-      email,
-      role: Role.DOCTOR,
-      firm: '',
-      cumulativeHolidayHours: 0
-    });
+    onAdd({ id: '', name: '', email, role: Role.DOCTOR, firm: '', cumulativeHolidayHours: 0 });
     setIsAdding(false);
     setEmail('');
   };
 
+  const handlePlaceholderSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await onAddPlaceholder?.(placeholderName, placeholderFirm);
+    setIsAdding(false);
+    setPlaceholderName('');
+    setPlaceholderFirm('');
+  };
+
+  const openLinkModal = async (placeholderId: string) => {
+    setLinkingId(placeholderId);
+    setSelectedRealUserId('');
+    if (useBackend) {
+      try {
+        const rows = await api.getUnlinkedDoctors();
+        setUnlinkedDoctors(rows);
+      } catch {
+        setUnlinkedDoctors([]);
+      }
+    }
+  };
+
+  const handleLink = async () => {
+    if (!linkingId || !selectedRealUserId) return;
+    setLinkBusy(true);
+    try {
+      await onLinkPlaceholder?.(linkingId, selectedRealUserId);
+      setLinkingId(null);
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
+  const confirmDeleteDoc = doctors.find(d => d.id === confirmDeleteId);
+  const linkingDoc = doctors.find(d => d.id === linkingId);
+
   return (
     <div className="space-y-6">
+      {/* Delete confirmation modal */}
+      {confirmDeleteId && confirmDeleteDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <Card className="w-full max-w-sm p-6 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0">
+                <UserX size={18} className="text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">Remove doctor?</h3>
+                <p className="text-[10px] text-slate-500 font-bold mt-1 leading-relaxed">
+                  <strong>{confirmDeleteDoc.name}</strong> will be removed from the department. Their shift history remains in published rosters.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => { onDelete(confirmDeleteId); setConfirmDeleteId(null); }}
+                className="flex-1 min-h-10 rounded-xl bg-rose-600 text-white text-[10px] font-black uppercase tracking-wide hover:bg-rose-700 transition-colors touch-manipulation"
+              >
+                Yes, remove
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteId(null)}
+                className="flex-1 min-h-10 rounded-xl bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wide hover:bg-slate-200 transition-colors touch-manipulation"
+              >
+                Cancel
+              </button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Link placeholder modal */}
+      {linkingId && linkingDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
+          <Card className="w-full max-w-sm p-6 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
+                <Link2 size={18} className="text-indigo-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">Link placeholder</h3>
+                <p className="text-[10px] text-slate-500 font-bold mt-1 leading-relaxed">
+                  Link <strong>{linkingDoc.name}</strong> to a doctor who has created their account. Their shift history and hours will transfer to the real account.
+                </p>
+              </div>
+            </div>
+            {unlinkedDoctors.length === 0 ? (
+              <p className="text-[10px] text-slate-500 font-bold bg-slate-50 p-3 rounded-xl">
+                No unlinked doctor accounts found. Ask the doctor to sign up first — they do not need to join the department beforehand.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Select account to link</label>
+                <select
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none ring-indigo-500 focus:ring-2"
+                  value={selectedRealUserId}
+                  onChange={e => setSelectedRealUserId(e.target.value)}
+                >
+                  <option value="">Choose a doctor…</option>
+                  {unlinkedDoctors.map(d => (
+                    <option key={d.id} value={d.id}>{d.name} — {d.email}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!selectedRealUserId || linkBusy}
+                onClick={() => void handleLink()}
+                className="flex-1 min-h-10 rounded-xl bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wide hover:bg-indigo-700 disabled:opacity-40 transition-colors touch-manipulation"
+              >
+                {linkBusy ? 'Linking…' : 'Link account'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLinkingId(null)}
+                className="flex-1 min-h-10 rounded-xl bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wide hover:bg-slate-200 transition-colors touch-manipulation"
+              >
+                Cancel
+              </button>
+            </div>
+          </Card>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="rs-h2 text-slate-900 tracking-tight">Staffing</h1>
         {isAdmin && !isAdding && (
-          <Button onClick={() => setIsAdding(true)} variant="primary" className="h-10 px-4 text-xs">
+          <Button onClick={() => setIsAdding(true)} variant="primary" className="h-10 px-4 text-xs touch-manipulation">
             <Plus size={16} /> ADD DOCTOR
           </Button>
         )}
@@ -3346,33 +3475,86 @@ const DoctorsView: React.FC<{
 
       {isAdding && (
         <Card className="p-5 border-2 border-indigo-600 animate-in zoom-in-95">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Doctor email (registered)</label>
-              <input 
-                type="email" 
-                required 
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none ring-indigo-500 focus:ring-2" 
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="doctor@med.com"
-              />
-            </div>
-            <p className="text-[9px] text-slate-400">
-              The doctor must have already created an account with this email. If we can&apos;t find them, we&apos;ll show an error.
-            </p>
-            <div className="flex gap-2">
-              <Button className="flex-1" type="submit">ADD DOCTOR TO DEPARTMENT</Button>
-              <Button variant="secondary" onClick={() => setIsAdding(false)} type="button">CANCEL</Button>
-            </div>
-          </form>
+          {/* Mode toggle */}
+          <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-4">
+            <button
+              type="button"
+              onClick={() => setAddMode('email')}
+              className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition-colors touch-manipulation ${addMode === 'email' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+            >
+              Has an account
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddMode('placeholder')}
+              className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition-colors touch-manipulation ${addMode === 'placeholder' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+            >
+              No account yet
+            </button>
+          </div>
+
+          {addMode === 'email' ? (
+            <form onSubmit={handleEmailSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Doctor email (registered)</label>
+                <input
+                  type="email"
+                  required
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none ring-indigo-500 focus:ring-2"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="doctor@hospital.com"
+                />
+              </div>
+              <p className="text-[9px] text-slate-400 leading-relaxed">
+                The doctor must have already created an account. If the email isn&apos;t found, an error will appear.
+              </p>
+              <div className="flex gap-2">
+                <Button className="flex-1" type="submit">Add to department</Button>
+                <Button variant="secondary" onClick={() => setIsAdding(false)} type="button">Cancel</Button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={e => void handlePlaceholderSubmit(e)} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Full name</label>
+                  <input
+                    type="text"
+                    required
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none ring-indigo-500 focus:ring-2"
+                    value={placeholderName}
+                    onChange={e => setPlaceholderName(e.target.value)}
+                    placeholder="Dr Jane Smith"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Firm (optional)</label>
+                  <input
+                    type="text"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none ring-indigo-500 focus:ring-2"
+                    value={placeholderFirm}
+                    onChange={e => setPlaceholderFirm(e.target.value)}
+                    placeholder="Firm A"
+                  />
+                </div>
+              </div>
+              <p className="text-[9px] text-slate-400 leading-relaxed">
+                Creates a roster slot with no login. When this doctor signs up later, use <strong>Link account</strong> on their card to merge their history.
+              </p>
+              <div className="flex gap-2">
+                <Button className="flex-1" type="submit">Add placeholder</Button>
+                <Button variant="secondary" onClick={() => setIsAdding(false)} type="button">Cancel</Button>
+              </div>
+            </form>
+          )}
         </Card>
       )}
 
       <p className="text-[10px] text-slate-500 font-bold">
         Everyone sees the same published numbers — it keeps coverage decisions open and fair.
         {doctors[0]?.fairnessHistoryMode === 'CALENDAR_YEAR' ? (
-          <> When Balance uses “this calendar year only,” each row shows that <strong>scheduling window</strong> plus the unchanged <strong>all-time</strong> audit line.</>
+          <> When Balance uses "this calendar year only," each row shows that <strong>scheduling window</strong> plus the unchanged <strong>all-time</strong> audit line.</>
         ) : (
           <> Totals here are the full published record the scheduler uses unless your admin switches the window under Balance.</>
         )}
@@ -3380,41 +3562,52 @@ const DoctorsView: React.FC<{
 
       <div className="grid gap-3">
         {doctors.map(doc => (
-          <Card key={doc.id} className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Card key={doc.id} className={`p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${doc.isPlaceholder ? 'border-dashed border-slate-300 bg-slate-50/60' : ''}`}>
             <div className="flex items-start gap-4 min-w-0 flex-1">
-              <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-600 border border-slate-100 uppercase">
-                {getInitials(doc.name || doc.id, '?')}
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black border uppercase shrink-0 ${doc.isPlaceholder ? 'bg-white border-slate-200 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
+                {doc.isPlaceholder
+                  ? <CircleDashed size={18} className="text-slate-400" />
+                  : getInitials(doc.name || doc.id, '?')
+                }
               </div>
-              <div>
-                <div className="text-sm font-black text-slate-900 leading-snug break-words">{doc.name}</div>
-                <div className="text-[9px] text-slate-400 font-bold mt-1 uppercase tracking-tighter">Assigned: {doc.firm}</div>
-                <div className="flex gap-3 mt-2 text-[10px] font-bold text-slate-600 flex-wrap">
-                  {doc.fairnessHistoryMode === 'CALENDAR_YEAR' && doc.lifetimeTotalHours !== undefined ? (
-                    <>
-                      <span>
-                        For scheduling ({doc.schedulingYear ?? '…'}):{' '}
-                        <span className="text-slate-900">{(doc.cumulativeTotalHours ?? 0)} hrs</span>,{' '}
-                        {(doc.cumulativeWeekendShifts ?? 0)} w/e, {(doc.cumulativeHolidayHours ?? 0)} hol hrs
-                      </span>
-                      <span className="text-slate-500 font-bold">
-                        All-time record: {doc.lifetimeTotalHours} hrs · {doc.lifetimeWeekendShifts ?? 0} w/e ·{' '}
-                        {doc.lifetimeHolidayHours ?? 0} hol hrs
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Total on-call (published): <span className="text-slate-900">{(doc.cumulativeTotalHours ?? 0)} hrs</span></span>
-                      <span>Holiday on-call (published): <span className="text-slate-900">{(doc.cumulativeHolidayHours ?? 0)} hrs</span></span>
-                      <span>Weekends: <span className="text-slate-900">{(doc.cumulativeWeekendShifts ?? 0)}</span></span>
-                    </>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-sm font-black text-slate-900 leading-snug break-words">{doc.name}</div>
+                  {doc.isPlaceholder && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-200 text-slate-500 text-[8px] font-black uppercase tracking-wide">
+                      <CircleDashed size={9} /> Unverified
+                    </span>
                   )}
                 </div>
-                {doc.fairnessHistoryMode === 'CALENDAR_YEAR' && (
-                  <p className="text-[9px] text-indigo-600 font-bold mt-2 leading-relaxed">
-                    Balance → &quot;This calendar year only&quot;: drafts use the {doc.schedulingYear ?? '…'} column; the all-time line is the unchanged audit trail.
+                <div className="text-[9px] text-slate-400 font-bold mt-1 uppercase tracking-tighter">Assigned: {doc.firm || '—'}</div>
+                {!doc.isPlaceholder && (
+                  <div className="flex gap-3 mt-2 text-[10px] font-bold text-slate-600 flex-wrap">
+                    {doc.fairnessHistoryMode === 'CALENDAR_YEAR' && doc.lifetimeTotalHours !== undefined ? (
+                      <>
+                        <span>
+                          For scheduling ({doc.schedulingYear ?? '…'}):{' '}
+                          <span className="text-slate-900">{doc.cumulativeTotalHours ?? 0} hrs</span>,{' '}
+                          {doc.cumulativeWeekendShifts ?? 0} w/e, {doc.cumulativeHolidayHours ?? 0} hol hrs
+                        </span>
+                        <span className="text-slate-500 font-bold">
+                          All-time: {doc.lifetimeTotalHours} hrs · {doc.lifetimeWeekendShifts ?? 0} w/e · {doc.lifetimeHolidayHours ?? 0} hol hrs
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Total on-call: <span className="text-slate-900">{doc.cumulativeTotalHours ?? 0} hrs</span></span>
+                        <span>Holiday: <span className="text-slate-900">{doc.cumulativeHolidayHours ?? 0} hrs</span></span>
+                        <span>Weekends: <span className="text-slate-900">{doc.cumulativeWeekendShifts ?? 0}</span></span>
+                      </>
+                    )}
+                  </div>
+                )}
+                {doc.isPlaceholder && (
+                  <p className="text-[9px] text-slate-400 font-bold mt-2 leading-relaxed">
+                    Roster slot only — no login. Use <strong>Link account</strong> once this doctor signs up.
                   </p>
                 )}
-                {isAdmin && (
+                {isAdmin && !doc.isPlaceholder && (
                   <div className="mt-3 space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">First months on the rota</label>
                     <select
@@ -3443,14 +3636,26 @@ const DoctorsView: React.FC<{
               </div>
             </div>
             {isAdmin && (
-              <button 
-                onClick={() => onDelete(doc.id)}
-                className="p-2 text-slate-300 hover:text-rose-500 transition-colors shrink-0 self-end sm:self-center"
-                type="button"
-                aria-label={`Remove ${doc.name} from department`}
-              >
-                <Trash2 size={16} />
-              </button>
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                {doc.isPlaceholder && (
+                  <button
+                    type="button"
+                    onClick={() => void openLinkModal(doc.id)}
+                    className="flex items-center gap-1.5 min-h-9 px-3 rounded-xl bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-wide border border-indigo-200 hover:bg-indigo-100 transition-colors touch-manipulation"
+                    aria-label={`Link ${doc.name} to a real account`}
+                  >
+                    <Link2 size={13} /> Link
+                  </button>
+                )}
+                <button
+                  onClick={() => setConfirmDeleteId(doc.id)}
+                  className="p-2 text-slate-300 hover:text-rose-500 transition-colors touch-manipulation"
+                  type="button"
+                  aria-label={`Remove ${doc.name} from department`}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             )}
           </Card>
         ))}

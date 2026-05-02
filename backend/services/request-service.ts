@@ -82,9 +82,20 @@ app.post('/api/requests', authMiddleware, withDept, async (req, res) => {
   try {
     const user = (req as any).user;
     const departmentId = (req as any).departmentId;
-    const { type, date, reason, swapWithDoctorId } = req.body;
+    const { type, date, reason, swapWithDoctorId, doctorId: onBehalfOf } = req.body;
 
     if (!type || !date) return res.status(400).json({ error: 'Type and date required' });
+
+    // Admins may submit on behalf of another doctor in the same department
+    let targetDoctorId = user.userId;
+    if (onBehalfOf && user.role === 'ADMIN') {
+      const member = await db.get(
+        'SELECT user_id FROM user_departments WHERE user_id = ? AND department_id = ?',
+        [onBehalfOf, departmentId]
+      );
+      if (!member) return res.status(400).json({ error: 'Doctor not found in this department' });
+      targetDoctorId = onBehalfOf;
+    }
 
     const id = crypto.randomUUID();
     const now = Date.now();
@@ -92,7 +103,7 @@ app.post('/api/requests', authMiddleware, withDept, async (req, res) => {
     await db.run(
       `INSERT INTO requests (id, department_id, doctor_id, type, date, status, reason, swap_with_doctor_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?)`,
-      [id, departmentId, user.userId, type, date, reason || null, swapWithDoctorId || null, now, now]
+      [id, departmentId, targetDoctorId, type, date, reason || null, swapWithDoctorId || null, now, now]
     );
 
     const request = await db.get('SELECT * FROM requests WHERE id = ?', [id]);

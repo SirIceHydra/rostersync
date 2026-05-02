@@ -25,6 +25,10 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  /** True when this record is an admin-created placeholder with no real account yet. */
+  isPlaceholder?: boolean;
+  /** Set once a placeholder has been linked to a real doctor account. */
+  linkedUserId?: string;
   firm: string;
   cumulativeHolidayHours: number;
   cumulativeTotalHours?: number;      // Total hours worked across all published months

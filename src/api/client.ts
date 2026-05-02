@@ -183,6 +183,24 @@ class ApiClient {
     });
   }
 
+  async addPlaceholder(name: string, firm: string) {
+    return this.request<any>('/api/users/placeholder', {
+      method: 'POST',
+      body: JSON.stringify({ name, firm }),
+    });
+  }
+
+  async linkPlaceholder(placeholderId: string, realUserId: string) {
+    return this.request<any>(`/api/users/${placeholderId}/link`, {
+      method: 'POST',
+      body: JSON.stringify({ realUserId }),
+    });
+  }
+
+  async getUnlinkedDoctors() {
+    return this.request<Array<{ id: string; name: string; email: string; firm: string }>>('/api/users/unlinked');
+  }
+
   async deleteUser(id: string) {
     return this.request<{ success: boolean }>(`/api/users/${id}`, {
       method: 'DELETE',
@@ -257,7 +275,7 @@ class ApiClient {
     return this.request<any[]>('/api/requests');
   }
 
-  async createRequest(data: { type: string; date: string; reason?: string; swapWithDoctorId?: string }) {
+  async createRequest(data: { type: string; date: string; reason?: string; swapWithDoctorId?: string; doctorId?: string }) {
     return this.request<any>('/api/requests', {
       method: 'POST',
       body: JSON.stringify(data),

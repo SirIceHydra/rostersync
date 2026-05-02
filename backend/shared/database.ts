@@ -178,6 +178,9 @@ export class Database implements DbClient {
         updated_at               BIGINT  NOT NULL
       )
     `);
+    // Placeholder columns — added to existing DBs via ALTER TABLE (idempotent)
+    await run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_placeholder BOOLEAN DEFAULT FALSE`);
+    await run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_user_id TEXT`);
 
     // Departments — each is one tenant
     await run(`

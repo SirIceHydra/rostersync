@@ -40,7 +40,8 @@ app.get('/api/users/doctors', authMiddleware, withDept, async (req, res) => {
     const doctors = await db.all(
       `SELECT u.id, u.email, u.name, u.role, u.firm,
               u.cumulative_holiday_hours, u.cumulative_total_hours,
-              u.cumulative_weekend_shifts, u.start_date, u.workload_start_mode
+              u.cumulative_weekend_shifts, u.start_date, u.workload_start_mode,
+              u.is_placeholder
        FROM users u
        INNER JOIN user_departments ud ON ud.user_id = u.id AND ud.department_id = ?
        WHERE u.role IN ('DOCTOR','ADMIN')
@@ -65,6 +66,7 @@ app.get('/api/users/doctors', authMiddleware, withDept, async (req, res) => {
         startDate: d.start_date || null,
         workloadStartMode: d.workload_start_mode || 'STAGGERED',
         fairnessHistoryMode,
+        isPlaceholder: !!d.is_placeholder,
       };
 
       if (yearRollup && schedulingYear !== null) {
@@ -145,6 +147,128 @@ app.post('/api/users', authMiddleware, withDept, adminOnly, async (req, res) => 
   } catch (error: any) {
     logger.error({ err: error }, 'Add user error');
     res.status(500).json({ error: 'Failed to add user', details: error.message });
+  }
+});
+
+// ── Create placeholder doctor (admin) ─────────────────────────────────────────
+app.post('/api/users/placeholder', authMiddleware, withDept, adminOnly, async (req, res) => {
+  try {
+    const departmentId = (req as any).departmentId;
+    const { name, firm } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
+
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    const fakeEmail = `placeholder_${id}@placeholder.internal`;
+
+    await db.run(
+      `INSERT INTO users (id, email, password_hash, name, role, firm,
+         cumulative_holiday_hours, cumulative_total_hours, cumulative_weekend_shifts,
+         start_date, workload_start_mode, is_placeholder, created_at, updated_at)
+       VALUES (?, ?, '', ?, 'DOCTOR', ?, 0, 0, 0, ?, 'STAGGERED', TRUE, ?, ?)`,
+      [id, fakeEmail, name.trim(), firm?.trim() || '', now, now, now]
+    );
+    await db.run(
+      'INSERT INTO user_departments (user_id, department_id, role_in_dept, joined_at) VALUES (?, ?, ?, ?)',
+      [id, departmentId, 'MEMBER', now]
+    );
+
+    res.status(201).json({
+      id, email: fakeEmail, name: name.trim(), role: 'DOCTOR', firm: firm?.trim() || '',
+      cumulativeHolidayHours: 0, cumulativeTotalHours: 0, cumulativeWeekendShifts: 0,
+      startDate: now, workloadStartMode: 'STAGGERED', isPlaceholder: true,
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Create placeholder error');
+    res.status(500).json({ error: 'Failed to create placeholder', details: error.message });
+  }
+});
+
+// ── Link placeholder to a real user account (admin) ───────────────────────────
+app.post('/api/users/:id/link', authMiddleware, withDept, adminOnly, async (req, res) => {
+  try {
+    const departmentId = (req as any).departmentId;
+    const { id: placeholderId } = req.params;
+    const { realUserId } = req.body;
+    if (!realUserId) return res.status(400).json({ error: 'realUserId is required' });
+
+    const placeholder = await db.get(
+      'SELECT * FROM users WHERE id = ? AND is_placeholder = TRUE', [placeholderId]
+    );
+    if (!placeholder) return res.status(404).json({ error: 'Placeholder not found' });
+
+    const realUser = await db.get('SELECT * FROM users WHERE id = ? AND is_placeholder IS NOT TRUE', [realUserId]);
+    if (!realUser) return res.status(404).json({ error: 'Real user not found' });
+
+    const now = Date.now();
+
+    // Transfer cumulative history to the real user
+    await db.run(
+      `UPDATE users SET
+         cumulative_total_hours    = cumulative_total_hours    + ?,
+         cumulative_weekend_shifts = cumulative_weekend_shifts + ?,
+         cumulative_holiday_hours  = cumulative_holiday_hours  + ?,
+         updated_at = ?
+       WHERE id = ?`,
+      [
+        placeholder.cumulative_total_hours    || 0,
+        placeholder.cumulative_weekend_shifts || 0,
+        placeholder.cumulative_holiday_hours  || 0,
+        now, realUserId
+      ]
+    );
+
+    // Re-point all shifts from placeholder to real user
+    await db.run('UPDATE shifts SET doctor_id = ? WHERE doctor_id = ?', [realUserId, placeholderId]);
+
+    // Re-point all requests from placeholder to real user
+    await db.run('UPDATE requests SET doctor_id = ? WHERE doctor_id = ?', [realUserId, placeholderId]);
+
+    // Add real user to department if not already there
+    await db.run(
+      'INSERT INTO user_departments (user_id, department_id, role_in_dept, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+      [realUserId, departmentId, 'MEMBER', now]
+    );
+
+    // Mark placeholder as linked, then remove it
+    await db.run('DELETE FROM user_departments WHERE user_id = ?', [placeholderId]);
+    await db.run('DELETE FROM users WHERE id = ?', [placeholderId]);
+
+    const updated = await db.get('SELECT * FROM users WHERE id = ?', [realUserId]);
+    res.json({
+      id: updated.id, email: updated.email, name: updated.name, role: updated.role, firm: updated.firm,
+      cumulativeHolidayHours:  updated.cumulative_holiday_hours  || 0,
+      cumulativeTotalHours:    updated.cumulative_total_hours    || 0,
+      cumulativeWeekendShifts: updated.cumulative_weekend_shifts || 0,
+      startDate: updated.start_date || null,
+      workloadStartMode: updated.workload_start_mode || 'STAGGERED',
+      isPlaceholder: false,
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Link placeholder error');
+    res.status(500).json({ error: 'Failed to link placeholder', details: error.message });
+  }
+});
+
+// ── Get unlinked real doctors (not yet in this department, for linking) ────────
+app.get('/api/users/unlinked', authMiddleware, withDept, adminOnly, async (req, res) => {
+  try {
+    const departmentId = (req as any).departmentId;
+    // Real (non-placeholder) doctors with no membership in this department
+    const rows = await db.all(
+      `SELECT u.id, u.name, u.email, u.firm FROM users u
+       WHERE u.role = 'DOCTOR'
+         AND (u.is_placeholder IS NULL OR u.is_placeholder = FALSE)
+         AND u.id NOT IN (
+           SELECT user_id FROM user_departments WHERE department_id = ?
+         )
+       ORDER BY u.name`,
+      [departmentId]
+    );
+    res.json(rows.map(r => ({ id: r.id, name: r.name, email: r.email, firm: r.firm })));
+  } catch (error: any) {
+    logger.error({ err: error }, 'Get unlinked users error');
+    res.status(500).json({ error: 'Failed to fetch unlinked users' });
   }
 });
 

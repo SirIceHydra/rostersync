@@ -7,7 +7,7 @@ import { Card } from './Card';
 import { Button } from './Button';
 import { Badge } from './Badge';
 import { RosterPrintSheet } from './RosterPrintSheet';
-import { Calendar, ChevronRight, Loader2, Printer } from 'lucide-react';
+import { Calendar, Loader2, Printer } from 'lucide-react';
 
 export type ArchiveEntry = {
   year: number;
@@ -28,7 +28,7 @@ export const RosterHistoryView: React.FC<{
   departmentName: string;
   currentUser: User;
   onOpenInRoster: (year: number, month: number) => void | Promise<void>;
-}> = ({ useBackend, doctors, requests, departmentName, currentUser, onOpenInRoster }) => {
+}> = ({ useBackend, doctors, requests, departmentName, currentUser }) => {
   const [entries, setEntries] = useState<ArchiveEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -97,24 +97,24 @@ export const RosterHistoryView: React.FC<{
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="no-print">
         <h1 className="text-2xl font-black text-slate-900 tracking-tight">Past rosters</h1>
         <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-relaxed max-w-lg">
-          Last six calendar months for your department. Published rosters are visible to everyone; drafts stay admin-only. Data lives in the roster database — nothing extra to sync.
+          Last six calendar months for your department. Published rosters are visible to everyone; drafts stay admin-only.
         </p>
       </div>
 
       {!useBackend && (
-        <Card className="p-4 border border-amber-100 bg-amber-50/50">
+        <Card className="no-print p-4 border border-amber-100 bg-amber-50/50">
           <p className="text-[11px] font-bold text-amber-800">Offline mode: archive needs the live server.</p>
         </Card>
       )}
 
       {err && (
-        <Card className="p-4 border border-rose-100 bg-rose-50/40">
+        <Card className="no-print p-4 border border-rose-100 bg-rose-50/40">
           <p className="text-[11px] font-bold text-rose-800 leading-relaxed">{err}</p>
           <p className="text-[10px] text-rose-700/90 font-bold mt-2 leading-relaxed">
-            Check that the API gateway is running on port 4000, you are signed in, and a department is selected. From the SPA, use the gateway — not a single microservice port — or leave <code className="rounded bg-white/80 px-1">VITE_API_URL</code> unset so Vite proxies <code className="rounded bg-white/80 px-1">/api</code>.
+            Check that the API gateway is running on port 4000, you are signed in, and a department is selected.
           </p>
           <div className="mt-3">
             <Button type="button" variant="secondary" className="text-[10px]" onClick={() => void load()}>
@@ -125,17 +125,17 @@ export const RosterHistoryView: React.FC<{
       )}
 
       {loading && (
-        <div className="flex items-center justify-center py-16 gap-2 text-slate-500">
+        <div className="no-print flex items-center justify-center py-16 gap-2 text-slate-500">
           <Loader2 className="animate-spin" size={22} />
           <span className="text-xs font-bold">Loading…</span>
         </div>
       )}
 
       {!loading && !err && entries.length === 0 && useBackend && (
-        <Card className="p-6 border border-slate-200 bg-white text-center">
+        <Card className="no-print p-6 border border-slate-200 bg-white text-center">
           <p className="text-[11px] font-bold text-slate-700">No roster rows in the last six months yet.</p>
           <p className="text-[10px] text-slate-500 font-bold mt-2 leading-relaxed max-w-md mx-auto">
-            After an admin generates and publishes a month, it will appear here. If you expected data, use Try again in case the first load failed silently.
+            After an admin generates and publishes a month, it will appear here.
           </p>
           <div className="mt-4">
             <Button type="button" variant="secondary" className="text-[10px]" onClick={() => void load()}>
@@ -146,12 +146,12 @@ export const RosterHistoryView: React.FC<{
       )}
 
       {!loading && entries.length > 0 && (
-        <div className="space-y-2">
+        <div className="no-print space-y-2">
           {entries.map((e) => {
             const label = `${MONTH_NAMES[e.month]} ${e.year}`;
             const hasFinal = e.status === 'FINAL' && e.rosterId;
             const hasDraftAdmin = isAdmin && e.status === 'DRAFT' && e.rosterId;
-            const openable = hasFinal || hasDraftAdmin;
+            const downloadable = hasFinal || hasDraftAdmin;
             const inPrep = e.hint === 'draft';
 
             return (
@@ -172,28 +172,17 @@ export const RosterHistoryView: React.FC<{
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 shrink-0">
-                    {openable && (
-                      <>
-                        <Button
-                          variant="secondary"
-                          className="min-h-11 text-[10px] touch-manipulation"
-                          type="button"
-                          onClick={() => void onOpenInRoster(e.year, e.month)}
-                        >
-                          Open in roster
-                          <ChevronRight size={14} className="opacity-70" aria-hidden />
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          className="min-h-11 text-[10px] touch-manipulation"
-                          type="button"
-                          disabled={printBusy === `${e.year}-${e.month}`}
-                          onClick={() => void handlePrint(e.year, e.month)}
-                        >
-                          <Printer size={14} aria-hidden />
-                          {printBusy === `${e.year}-${e.month}` ? 'Preparing…' : 'PDF'}
-                        </Button>
-                      </>
+                    {downloadable && (
+                      <Button
+                        variant="secondary"
+                        className="min-h-11 text-[10px] touch-manipulation"
+                        type="button"
+                        disabled={printBusy === `${e.year}-${e.month}`}
+                        onClick={() => void handlePrint(e.year, e.month)}
+                      >
+                        <Printer size={14} aria-hidden />
+                        {printBusy === `${e.year}-${e.month}` ? 'Preparing…' : 'Download PDF'}
+                      </Button>
                     )}
                   </div>
                 </div>
