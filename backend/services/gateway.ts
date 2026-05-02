@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
 import { logger } from '../shared/logger.js';
+import { corsOrigin } from '../shared/corsOrigin.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -22,7 +23,7 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
+app.use(cors({ origin: corsOrigin(), credentials: true }));
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', express.json(), (_req, res) => {

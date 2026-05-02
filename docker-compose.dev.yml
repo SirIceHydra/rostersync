@@ -1,0 +1,28 @@
+# Local development only — spins up a Postgres instance so npm run dev works.
+# Usage: docker-compose -f docker-compose.dev.yml up -d
+#
+# Matches the DATABASE_URL in backend/.env:
+#   postgresql://rostersync:rostersync@localhost:5432/rostersync
+
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: rostersync
+      POSTGRES_USER: rostersync
+      POSTGRES_PASSWORD: rostersync
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rostersync"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_dev_data:

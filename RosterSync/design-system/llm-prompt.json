@@ -1,0 +1,192 @@
+{
+  "$prompt_kind": "design_system_retrofit",
+  "version": "1.0.0",
+  "system_message": "You are a senior product designer + frontend engineer pair-working in an IDE. Your job is to take the existing application in this repository and convert it — top to bottom — to the RosterSync design language defined below. You make MINIMAL functional changes; you make MAXIMAL visual + structural-styling changes. Treat the design system as the single source of truth: replace all ad-hoc colors, type, spacing, radii, shadows, components, and motion with their tokenized equivalents. When something in the existing app has no direct mapping, reach for the closest token and explain the choice in a comment.",
+
+  "instructions_to_model": [
+    "STEP 1 — Audit. List every page/route, every reusable component, and every place colors/fonts/spacing are hard-coded. Output the audit as a checklist before changing files.",
+    "STEP 2 — Install tokens. Add `design-system/rostersync.css` (provided) and import it once at the app root. Wire the Google Fonts <link> in <head>. Remove any competing global CSS resets, font imports, and color variables that conflict.",
+    "STEP 3 — Replace primitives. Rewrite Button, Input, Select, Textarea, Checkbox, Radio, Switch, Card, Pill/Badge, Tag, Avatar, Table, Tabs, Alert, Tooltip, Modal, Toast, Progress, Divider, Sidebar item, Navbar so they consume only tokens (CSS variables prefixed `--rs-*` or the `.rs-*` utility classes). Match the variants and sizes specified in `components` below — no extras unless the existing app needs them.",
+    "STEP 4 — Replace layouts. Rebuild every page using the spacing scale (multiples of 4px), the typography scale (display vs body family), the breakpoints, and the container max-width 1240px. Page background = paper (#FAF8F5). Cards live on white.",
+    "STEP 5 — Apply brand. Replace all logos with the lockups in `logos/` (SVG preferred). Use the color lockup on light backgrounds, mono-light on dark/photographic backgrounds. Favicon = `logos/rostersync-favicon.svg`.",
+    "STEP 6 — Motion. All transitions use the durations and easings in `motion`. Respect `prefers-reduced-motion`.",
+    "STEP 7 — Accessibility. Every interactive element gets a visible purple focus ring. Min touch target 44px. Body text contrast >= 4.5:1.",
+    "STEP 8 — Cleanup. Delete unused colors, fonts, icon libraries, shadow utilities, and one-off CSS. The final repo should reference NO color hex outside the token set unless explicitly listed under `escape_hatches` below.",
+    "STEP 9 — Verify. Generate a one-page report at `design-system/RETROFIT_REPORT.md` describing: files touched, components migrated, screens before/after, any escape hatches used, and any TODOs that need product review."
+  ],
+
+  "non_negotiables": [
+    "Use ONLY these brand colors: purple #5D41B9, orange #FF912A, and the neutrals/semantics defined in `tokens.color`. No other accent colors.",
+    "Use ONLY these font families: Bricolage Grotesque (display, 500–800), Inter (body, 400–700), JetBrains Mono (mono).",
+    "Display font is for headings, the wordmark, and large stat numbers ONLY. Body font is everything else, including all UI controls.",
+    "Body text never goes below 13px. Default body is 15px.",
+    "All spacing is a multiple of 4. No 7px, no 13px paddings.",
+    "Primary CTAs are pill-shaped (border-radius: 9999px). Secondary CTAs are pill OR md-radius (10px). Inputs are md-radius.",
+    "Cards default to: white bg, 1px slate-200 border, 14px radius, 24px padding, NO shadow. Add shadow only if interactive on hover or floating.",
+    "Never gradient-blend purple and orange. They sit adjacent, never mixed.",
+    "Never reuse the logo's sync-circle as a generic refresh/loading icon. Use a Lucide RefreshCw icon there.",
+    "Never set body text to pure black or pure white — use `--rs-ink` (#1B1230) and `--rs-paper` (#FAF8F5)."
+  ],
+
+  "tokens": {
+    "color": {
+      "purple":      "#5D41B9",
+      "purple-700":  "#4A32A0",
+      "purple-500":  "#7B62D1",
+      "purple-100":  "#EAE3FA",
+      "purple-50":   "#F5F1FE",
+      "orange":      "#FF912A",
+      "orange-600":  "#E87A14",
+      "orange-100":  "#FFE7CF",
+      "orange-50":   "#FFF4E6",
+      "ink":         "#1B1230",
+      "slate-900":   "#2A2140",
+      "slate-700":   "#4A4360",
+      "slate-500":   "#6B6478",
+      "slate-300":   "#C9C3D6",
+      "slate-200":   "#E8E2D8",
+      "slate-100":   "#F2EEE8",
+      "paper":       "#FAF8F5",
+      "white":       "#FFFFFF",
+      "success":     "#1F9D67",  "success-bg": "#E1F4EB",
+      "warning":     "#D98B12",  "warning-bg": "#FCF1DD",
+      "danger":      "#D6443B",  "danger-bg":  "#FBE3E1",
+      "info":        "#2C7AB8",  "info-bg":    "#E1EEF8"
+    },
+    "font_family": {
+      "display": "'Bricolage Grotesque', 'Nunito', system-ui, sans-serif",
+      "body":    "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
+      "mono":    "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
+    },
+    "type_scale": {
+      "display-xl": "Bricolage 800 / 64px / 1.05 / -0.03em",
+      "display-lg": "Bricolage 800 / 48px / 1.08 / -0.025em",
+      "h1":         "Bricolage 700 / 36px / 1.15 / -0.02em",
+      "h2":         "Bricolage 700 / 28px / 1.20 / -0.015em",
+      "h3":         "Bricolage 700 / 22px / 1.25 / -0.01em",
+      "h4":         "Bricolage 600 / 18px / 1.30",
+      "body-lg":    "Inter 400 / 17px / 1.55",
+      "body":       "Inter 400 / 15px / 1.55",
+      "body-sm":    "Inter 400 / 13px / 1.50",
+      "label":      "Inter 500 / 13px / 1.40",
+      "caption":    "Inter 400 / 12px / 1.40",
+      "overline":   "Inter 600 / 11px / 1.30 / +0.12em / UPPERCASE",
+      "mono":       "JetBrains 400 / 13px / 1.50"
+    },
+    "spacing_4px_grid": [0, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96, 128],
+    "radius": { "sm": 6, "md": 10, "lg": 14, "xl": 18, "2xl": 24, "pill": 9999 },
+    "shadow": {
+      "xs":   "0 1px 2px rgba(27,18,48,0.05)",
+      "sm":   "0 2px 6px rgba(27,18,48,0.06), 0 1px 2px rgba(27,18,48,0.04)",
+      "md":   "0 6px 16px rgba(27,18,48,0.08), 0 2px 4px rgba(27,18,48,0.04)",
+      "lg":   "0 16px 40px rgba(27,18,48,0.10), 0 4px 8px rgba(27,18,48,0.05)",
+      "xl":   "0 32px 64px rgba(27,18,48,0.14)",
+      "ring-purple": "0 0 0 3px rgba(93,65,185,0.30)"
+    },
+    "motion": {
+      "ease_standard":   "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      "ease_decelerate": "cubic-bezier(0, 0, 0.2, 1)",
+      "duration_fast": "150ms",
+      "duration_base": "220ms",
+      "duration_slow": "360ms"
+    },
+    "breakpoints": { "sm": 640, "md": 768, "lg": 1024, "xl": 1280, "2xl": 1536 },
+    "container_max_width": 1240,
+    "container_padding_mobile": 20,
+    "container_padding_desktop": 40,
+    "min_touch_target": 44
+  },
+
+  "components": {
+    "button": {
+      "shape": "pill (radius 9999) for primary; pill or md (10) for secondary; md square 40x40 for icon-only",
+      "min_height": 44,
+      "padding_md": "10px 20px",
+      "font": "Inter 500 / 15px",
+      "icon_gap": 8,
+      "variants": {
+        "primary":   "bg purple, fg white, hover bg purple-700",
+        "secondary": "bg white, fg ink, border 1px slate-200, hover bg slate-100 border slate-300",
+        "ghost":     "bg transparent, fg purple, hover bg purple-50",
+        "accent":    "bg orange, fg ink, hover bg orange-600",
+        "danger":    "bg danger, fg white, hover bg #B83730"
+      },
+      "sizes": { "sm": "32 min-h, 13px, 6/14 padding", "md": "44 min-h, 15px, 10/20 padding", "lg": "52 min-h, 17px, 14/28 padding" }
+    },
+    "input": "44 min-h, 10/14 padding, md radius, 1px slate-200 border, focus = purple border + ring-purple",
+    "card":   "white bg, 1px slate-200 border, lg radius (14), 24 padding, no shadow by default",
+    "pill":   "Inter 600 / 12px UPPERCASE / 0.04em / 4px 10px / pill radius / variant tints listed in tokens.color (use *-bg + on-color)",
+    "tag":    "Inter 500 / 13px / lowercase / 4px 10px / pill / slate-100 + slate-700",
+    "avatar": "circle, sizes 24/32/40/56/80, fallback bg purple-100 fg purple weight 600",
+    "table":  "header overline-styled slate-500, row 14/16 padding, hover slate-100, selected purple-50, no zebra",
+    "alert":  "16 padding, lg radius, 1px tinted border, variant bg from semantic *-bg",
+    "tabs":   "container slate-100 + 4 padding + lg radius, active tab = white + xs shadow",
+    "modal":  "scrim ink/45 + 4px blur, container white + xl radius + xl shadow + 32 padding + max-width 520",
+    "toast":  "ink bg, white fg, md radius, 12/16 padding, lg shadow, 4500ms",
+    "sidebar": "248 wide, paper bg, item md radius, active = purple-100 bg + purple fg + weight 600",
+    "navbar":  "64 tall, white bg, 1px slate-200 bottom border, logo height 28"
+  },
+
+  "iconography": {
+    "library": "Lucide (lucide.dev) — line icons, 1.75px stroke, rounded caps/joins. Sizes 16/20/24/32. Inherit text color, except notification accents which use orange."
+  },
+
+  "imagery_rules": [
+    "Real clinician photography preferred — candid, natural light, neutral backgrounds.",
+    "Illustrations: flat 2-color (purple + orange) on paper.",
+    "Image placeholders: diagonal-stripe SVG pattern in slate-200 with mono caption inside. Never auto-generate fake portraits."
+  ],
+
+  "voice_and_copy": {
+    "tone": "Calm, confident, human. Clear over clever. No jargon, no hype.",
+    "rules": [
+      "Sentence case for buttons and headings (not Title Case).",
+      "Action labels are verbs: 'Add shift', 'Publish roster', 'Export'.",
+      "Empty states explain what + why + a single CTA.",
+      "Numbers in stats: no commas under 10,000; use the mono font for IDs."
+    ]
+  },
+
+  "accessibility": {
+    "min_contrast": { "text": 4.5, "large_text": 3.0, "ui": 3.0 },
+    "focus": "Always show a 3px purple focus ring (rgba(93,65,185,0.30)) on keyboard focus. Never remove without replacement.",
+    "min_touch_target": 44,
+    "reduced_motion": "Disable rotation/parallax; preserve opacity fades. Honor prefers-reduced-motion."
+  },
+
+  "do_nots": [
+    "No purple→orange gradients.",
+    "No reuse of the logo sync-circle as a UI icon.",
+    "No more than 2 background tints on a single screen.",
+    "No pure #000 or #FFF body text.",
+    "No shadow + border + tint stacked on one element.",
+    "No Bricolage Grotesque below 18px.",
+    "No emoji as UI affordances unless explicitly approved.",
+    "No drop-in icon libraries other than Lucide."
+  ],
+
+  "escape_hatches": [
+    "Charts/data-viz may use a 6-step categorical scale derived from the brand: purple, orange, info, success, warning, slate-500. Document any new chart color with a comment.",
+    "Maps and external embeds keep their host styling but must be wrapped in a `.rs-card`.",
+    "Screenshots inside marketing pages are exempt from token rules but must use lg radius and a 1px slate-200 border."
+  ],
+
+  "files_to_consume": {
+    "tokens_json":     "design-system/tokens.json",
+    "stylesheet":      "design-system/rostersync.css",
+    "logo_color":      "logos/rostersync-lockup-color.svg",
+    "logo_mono_dark":  "logos/rostersync-lockup-mono-dark.svg",
+    "logo_mono_light": "logos/rostersync-lockup-mono-light.svg",
+    "favicon_svg":     "logos/rostersync-favicon.svg",
+    "showcase_demo":   "Design System.html"
+  },
+
+  "deliverables": [
+    "All app source files updated to consume `--rs-*` tokens / `.rs-*` classes only.",
+    "Tailwind/MUI/Chakra/etc. theme config (if present) rewritten to map to these tokens.",
+    "`design-system/RETROFIT_REPORT.md` summarizing the migration, escape hatches used, and remaining TODOs.",
+    "Visual smoke test: take a screenshot of every top-level route at desktop (1280) and mobile (390) widths."
+  ],
+
+  "user_message_template": "Apply the RosterSync design language to this entire codebase per the system message above. Read `design-system/tokens.json`, `design-system/rostersync.css`, and `Design System.html` first to internalize the language, then start with the audit (Step 1) and post the checklist before touching code."
+}

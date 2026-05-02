@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Mail, Lock, User, Building } from 'lucide-react';
+import { Mail, Lock, User, Building } from 'lucide-react';
 import { Button } from './Button';
 import { Card } from './Card';
 import { Role } from '../../types';
@@ -33,7 +33,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister }) => 
           setError('Please fill in all required fields');
           return;
         }
-        await onRegister({ email, password, name, role, firm: firm || undefined, departmentName: role === Role.ADMIN ? (departmentName || undefined) : undefined });
+        await onRegister({
+          email,
+          password,
+          name,
+          role,
+          firm: firm || undefined,
+          departmentName: role === Role.ADMIN ? departmentName || undefined : undefined,
+        });
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -43,41 +50,44 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister }) => 
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden" style={{background: 'linear-gradient(160deg, #FAF8F6 0%, #FFF3E8 50%, #FAF8F6 100%)'}}>
-      {/* Decorative blobs */}
-      <div className="hs-blob w-40 h-40 -top-10 -right-10" style={{background: '#F47C20', animationDelay: '0s'}} />
-      <div className="hs-blob w-28 h-28 bottom-20 -left-8" style={{background: '#4A90D9', animationDelay: '2s'}} />
-      <div className="hs-blob w-20 h-20 top-1/3 -left-6" style={{background: '#F5C842', animationDelay: '4s'}} />
-      <div className="hs-blob w-16 h-16 bottom-32 right-4" style={{background: '#8B6BF5', animationDelay: '1s'}} />
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-slate-50">
+      <div className="hs-blob w-40 h-40 -top-10 -right-10 bg-indigo-100 opacity-50" style={{ animationDelay: '0s' }} />
+      <div className="hs-blob w-32 h-32 bottom-16 -left-10 bg-amber-100 opacity-40" style={{ animationDelay: '2.5s' }} />
 
       <div className="w-full max-w-md space-y-8 relative z-10">
         <div className="text-center">
-          <div className="w-20 h-20 mx-auto flex items-center justify-center mb-6 relative">
-            <div className="absolute inset-0 rounded-full opacity-20" style={{background: '#F47C20', transform: 'scale(1.3)'}} />
-            <div className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg" style={{background: '#F47C20'}}>
-              <ShieldCheck className="text-white" size={36} />
-            </div>
+          <div className="mx-auto mb-6 flex justify-center">
+            <img
+              src="/rostersync-lockup-color.svg"
+              alt="RosterSync"
+              width={400}
+              height={88}
+              className="h-14 sm:h-16 w-auto max-w-[min(100%,320px)] object-contain"
+            />
           </div>
-          <h1 className="text-4xl font-black tracking-tight" style={{color: '#1A1410'}}>RosterSync</h1>
-          <p className="font-bold mt-2 text-xs" style={{color: '#A09488', letterSpacing: '0.12em'}}>
-            Dept. Roster Management
-          </p>
+          <p className="rs-overline text-slate-500">Dept. roster management</p>
         </div>
 
         <Card className="p-6">
-          <div className="flex gap-2 mb-6 p-1 rounded-2xl" style={{background: '#F0EDE9'}}>
+          <div className="flex w-full gap-1 p-1 mb-6 rounded-[var(--rs-r-lg)] bg-slate-100" role="tablist" aria-label="Auth mode">
             <button
+              type="button"
+              role="tab"
+              aria-selected={isLogin}
               onClick={() => setIsLogin(true)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-extrabold transition-all ${
-                isLogin ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+              className={`flex-1 min-h-11 rounded-[var(--rs-r-md)] px-4 text-sm font-semibold transition-shadow ${
+                isLogin ? 'bg-white text-slate-900 shadow-[var(--rs-shadow-xs)]' : 'text-slate-600 hover:text-slate-800'
               }`}
             >
               Login
             </button>
             <button
+              type="button"
+              role="tab"
+              aria-selected={!isLogin}
               onClick={() => setIsLogin(false)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-extrabold transition-all ${
-                !isLogin ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+              className={`flex-1 min-h-11 rounded-[var(--rs-r-md)] px-4 text-sm font-semibold transition-shadow ${
+                !isLogin ? 'bg-white text-slate-900 shadow-[var(--rs-shadow-xs)]' : 'text-slate-600 hover:text-slate-800'
               }`}
             >
               Register
@@ -85,39 +95,41 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister }) => 
           </div>
 
           {error && (
-            <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-sm text-rose-700 font-bold">
-              {error}
+            <div className="rs-alert rs-alert--danger mb-4" role="alert">
+              <div className="rs-alert-body text-sm font-semibold">{error}</div>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
               <>
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
-                    Full Name
+                <div className="rs-field">
+                  <label className="rs-label uppercase tracking-widest text-[10px] text-slate-500" htmlFor="reg-name">
+                    Full name
                   </label>
                   <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} strokeWidth={2} />
                     <input
+                      id="reg-name"
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 text-sm font-bold outline-none"
+                      className="rs-input rs-input--leading-icon font-medium"
                       placeholder="Dr. John Smith"
                       required={!isLogin}
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
+                <div className="rs-field">
+                  <label className="rs-label uppercase tracking-widest text-[10px] text-slate-500" htmlFor="reg-role">
                     Role
                   </label>
                   <select
+                    id="reg-role"
                     value={role}
                     onChange={(e) => setRole(e.target.value as Role)}
-                    className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 text-sm font-bold outline-none"
+                    className="rs-select font-medium"
                   >
                     <option value={Role.DOCTOR}>Doctor</option>
                     <option value={Role.ADMIN}>Admin (Medical Officer)</option>
@@ -125,36 +137,38 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister }) => 
                 </div>
 
                 {role === Role.ADMIN && (
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
+                  <div className="rs-field">
+                    <label className="rs-label uppercase tracking-widest text-[10px] text-slate-500" htmlFor="reg-dept">
                       Department name (optional)
                     </label>
                     <div className="relative">
-                      <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+                      <Building className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} strokeWidth={2} />
                       <input
+                        id="reg-dept"
                         type="text"
                         value={departmentName}
                         onChange={(e) => setDepartmentName(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 text-sm font-bold outline-none"
+                        className="rs-input rs-input--leading-icon font-medium"
                         placeholder="e.g. Emergency Medicine"
                       />
                     </div>
-                    <p className="text-[9px] text-slate-400 mt-1.5 font-semibold">A unique code will be generated for your department; share it so doctors can join.</p>
+                    <p className="rs-caption mt-1">A unique code will be generated for your department; share it so doctors can join.</p>
                   </div>
                 )}
 
                 {role === Role.DOCTOR && (
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
-                      Firm/Team (Optional)
+                  <div className="rs-field">
+                    <label className="rs-label uppercase tracking-widest text-[10px] text-slate-500" htmlFor="reg-firm">
+                      Firm / team (optional)
                     </label>
                     <div className="relative">
-                      <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+                      <Building className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} strokeWidth={2} />
                       <input
+                        id="reg-firm"
                         type="text"
                         value={firm}
                         onChange={(e) => setFirm(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 text-sm font-bold outline-none"
+                        className="rs-input rs-input--leading-icon font-medium"
                         placeholder="Team Red"
                       />
                     </div>
@@ -163,34 +177,36 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister }) => 
               </>
             )}
 
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
+            <div className="rs-field">
+              <label className="rs-label uppercase tracking-widest text-[10px] text-slate-500" htmlFor="login-email">
                 Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} strokeWidth={2} />
                 <input
+                  id="login-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 text-sm font-bold outline-none"
+                  className="rs-input rs-input--leading-icon font-medium"
                   placeholder="doctor@med.com"
                   required
                 />
               </div>
             </div>
 
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
+            <div className="rs-field">
+              <label className="rs-label uppercase tracking-widest text-[10px] text-slate-500" htmlFor="login-password">
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} strokeWidth={2} />
                 <input
+                  id="login-password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 text-sm font-bold outline-none"
+                  className="rs-input rs-input--leading-icon font-medium"
                   placeholder="••••••••"
                   required
                   minLength={6}
@@ -198,13 +214,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister }) => 
               </div>
             </div>
 
-            <Button
-              type="submit"
-              variant="primary"
-              className="w-full py-4 text-base"
-              disabled={loading}
-            >
-              {loading ? 'Please wait…' : isLogin ? 'Login' : 'Create Account'}
+            <Button type="submit" variant="primary" className="w-full !min-h-[52px] text-base" disabled={loading}>
+              {loading ? 'Please wait…' : isLogin ? 'Login' : 'Create account'}
             </Button>
           </form>
         </Card>

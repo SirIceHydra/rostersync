@@ -421,42 +421,33 @@ A user can belong to multiple departments. Admins manage only their own departme
 
 ---
 
+## URLs & API (read this if login or “Past rosters” fails)
+
+- **Always call the gateway from the browser:** `http://localhost:4000` (path prefix `/api/...`). The gateway forwards to the microservices.
+- **Never set `VITE_API_URL` to ports 4001–4005.** Those services only implement **part** of `/api`. For example, `/api/rosters/archive` is implemented on the roster service but is only reachable in normal setups via the gateway; pointing the SPA at `http://localhost:4001` produces confusing HTML errors.
+- **Recommended local dev:** leave **`VITE_API_URL` unset** (or empty) in the project root `.env`. Then `npm run dev` proxies **`/api` → `http://127.0.0.1:4000`**, so the UI keeps working even when Vite picks port **3001–3005** because ports **3000–3002** are busy.
+- Override proxy target if needed: **`VITE_GATEWAY_PROXY_TARGET=http://127.0.0.1:4000`** (see root `.env.example`).
+- **Docker:** `docker-compose.yml` builds the SPA with **`VITE_API_URL=http://localhost:4000`** by default (matches the published gateway port). The frontend image’s **`nginx/spa.conf`** also defines an **`/api/`** upstream to **`backend:4000`** for setups where you want same-origin API routing behind one hostname.
+
+---
+
 ## Environment Configuration
 
-The backend configuration file is at `backend/.env`. The default values work out of the box:
+Backend secrets and ports live in **`backend/.env`** (copy from **`backend/.env.example`**). You need at least **`DATABASE_URL`** (PostgreSQL) and **`JWT_SECRET`**.
 
-```
-JWT_SECRET=rostersync-dev-secret-change-in-production
-CORS_ORIGIN=http://localhost:3000
-DB_PATH=./data/rostersync.db
-GATEWAY_PORT=4000
-AUTH_SERVICE_PORT=4001
-ROSTER_SERVICE_PORT=4002
-REQUEST_SERVICE_PORT=4003
-USER_SERVICE_PORT=4004
-ANALYTICS_SERVICE_PORT=4005
-```
+If **`CORS_ORIGIN`** is unset, development allows common **`http://localhost:<port>`** origins automatically. In production, set it to your real site URL(s), comma-separated.
 
-Do not change these unless you know what you are doing.
+See **`backend/.env.example`** and the root **`.env.example`** for full variable lists.
 
 ---
 
 ## Database
 
-The database file is a single file at:
+The app uses **PostgreSQL**. Set **`DATABASE_URL`** in **`backend/.env`** (see **`backend/.env.example`**). Tables are created automatically on first connection.
 
-```
-backend/data/rostersync.db
-```
+To wipe data in development, drop and recreate the database (or remove the Docker volume if you use Compose), then restart the backend and register accounts again.
 
-It is created automatically on first run. You do not need to set it up manually.
-
-If you want to start completely fresh (wipe all data and accounts):
-
-1. Stop the backend (Ctrl + C in the backend terminal)
-2. Delete the file `backend/data/rostersync.db`
-3. Start the backend again — a fresh empty database is created
-4. Register new accounts from scratch
+An older **`backend/data/rostersync.db`** path may still appear in legacy docs; it is not used by the current Postgres backend.
 
 ---
 
@@ -484,8 +475,8 @@ If you want to start completely fresh (wipe all data and accounts):
 - Make sure you are inside the `backend/` folder when running `npm run dev`
 
 **CORS error in browser**
-- Make sure `CORS_ORIGIN=http://localhost:3000` is in `backend/.env`
-- Make sure the frontend is running on port 3000 (shown in the Vite output)
+- Prefer leaving **`CORS_ORIGIN` unset** in dev (defaults include several localhost ports), or set a comma-separated list that matches your Vite URL (e.g. `http://localhost:3003`).
+- Or leave **`VITE_API_URL` unset** so Vite proxies **`/api`** to the gateway (same-origin, no CORS).
 
 ---
 

@@ -1,7 +1,11 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pg = require('pg') as typeof import('pg');
-const { Pool } = pg;
-import type { Pool as PgPool, PoolClient } from 'pg';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { Pool, type PoolClient } from 'pg';
+
+/** Resolve backend/.env no matter which working directory started the process */
+const _backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+dotenv.config({ path: path.join(_backendRoot, '.env') });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Converts SQLite-style ? placeholders to Postgres $1, $2, $3 …
@@ -51,14 +55,16 @@ class TransactionDatabase implements DbClient {
 // All services call db.get() / db.all() / db.run() exactly as before.
 // ─────────────────────────────────────────────────────────────────────────────
 export class Database implements DbClient {
-  private pool: PgPool;
+  private pool: Pool;
   private static instance: Database;
   private initPromise: Promise<void> | null = null;
 
   private constructor() {
-    const connectionString = process.env.DATABASE_URL;
+    const connectionString = process.env.DATABASE_URL?.trim();
     if (!connectionString) {
-      throw new Error('DATABASE_URL environment variable is required');
+      throw new Error(
+        'DATABASE_URL is not set. Copy backend/.env.example to backend/.env and add your Postgres URL.'
+      );
     }
 
     this.pool = new Pool({

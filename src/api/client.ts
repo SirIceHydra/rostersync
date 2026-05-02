@@ -1,4 +1,13 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+/** Trimmed gateway URL, or empty string for same-origin `/api` (Vite proxy in dev; nginx in Docker SPA image). */
+function resolveApiBase(): string {
+  const raw = import.meta.env.VITE_API_URL;
+  const fromEnv = typeof raw === 'string' ? raw.trim() : '';
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  if (import.meta.env.DEV) return '';
+  return 'http://localhost:4000';
+}
+
+const API_BASE = resolveApiBase();
 
 const AUTH_PATHS = ['/api/auth/register', '/api/auth/login', '/api/auth/verify', '/api/auth/join-department', '/api/auth/departments'];
 
@@ -68,14 +77,41 @@ class ApiClient {
       }
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers,
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(
+        msg === 'Failed to fetch'
+          ? `Could not reach the server (${API_BASE || '(same origin /api)'}). Run the API gateway on port 4000 (npm run dev in backend/), use npm run dev:all, or set VITE_API_URL / VITE_GATEWAY_PROXY_TARGET in .env — see README “URLs & ports”.`
+          : msg
+      );
+    }
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      const ct = response.headers.get('content-type') ?? '';
+      let message = `Request failed (${response.status})`;
+      if (ct.includes('application/json')) {
+        const error = await response.json().catch(() => ({}));
+        message = (error as { error?: string }).error || message;
+      } else {
+        const text = await response.text().catch(() => '');
+        const html =
+          /cannot get\s+\/api/i.test(text) ||
+          /<!\s*doctype\s+html/i.test(text) ||
+          /<\/html>/i.test(text);
+        if (html) {
+          message =
+            response.status === 404
+              ? `API route not found (${endpoint}). The browser may be talking to the wrong server — use the API gateway at port 4000, leave VITE_API_URL empty in dev (Vite proxies /api), or see README “URLs & ports”.`
+              : `Non-JSON error (${response.status}) from ${endpoint}. Check VITE_API_URL points at the gateway (http://localhost:4000), not a single microservice port.`;
+        } else if (text) message = text.trim().slice(0, 280);
+      }
+      throw new Error(message);
     }
 
     return response.json();
@@ -168,6 +204,20 @@ class ApiClient {
     return this.request<any>(`/api/rosters/${year}/${month}`);
   }
 
+  /** Rolling months of roster rows for this department (see GET /api/rosters/archive). */
+  async getRosterArchive(months = 6) {
+    return this.request<{
+      entries: Array<{
+        year: number;
+        month: number;
+        rosterId: string | null;
+        status: string | null;
+        updatedAt: number | null;
+        hint?: string;
+      }>;
+    }>(`/api/rosters/archive?months=${encodeURIComponent(String(months))}`);
+  }
+
   async generateRoster(month?: number, year?: number) {
     return this.request<{ roster: any; report: any }>('/api/rosters/generate', {
       method: 'POST',
@@ -196,6 +246,13 @@ class ApiClient {
   }
 
   // Requests
+  async getApprovedSchedule(start: string, end: string) {
+    const q = `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+    return this.request<{ entries: { date: string; type: string; doctorId: string }[] }>(
+      `/api/requests/approved-schedule?${q}`
+    );
+  }
+
   async getRequests() {
     return this.request<any[]>('/api/requests');
   }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Role, 
   User, 
@@ -21,6 +21,7 @@ import {
   Plus,
   LogOut,
   History,
+  House,
   Info,
   Users,
   Printer,
@@ -32,15 +33,23 @@ import {
   ChevronRight,
   Loader2,
   SlidersHorizontal,
-  Menu
+  Menu,
+  Archive
 } from 'lucide-react';
 
 // --- Production UI Components ---
 import { Card } from './src/components/Card';
 import { Button } from './src/components/Button';
 import { Badge } from './src/components/Badge';
+import { RosterPrintSheet } from './src/components/RosterPrintSheet';
+import { RosterHistoryView } from './src/components/RosterHistoryView';
+import {
+  mergeApprovedForCalendar,
+  spanCalendarMonths,
+  type ApprovedScheduleMarker,
+} from './src/utils/scheduleRequestsMerge';
 
-type AppShellView = 'DASHBOARD' | 'ROSTER' | 'ANALYTICS' | 'REQUESTS' | 'DOCTORS' | 'TUNING';
+type AppShellView = 'DASHBOARD' | 'ROSTER' | 'ANALYTICS' | 'REQUESTS' | 'DOCTORS' | 'TUNING' | 'ARCHIVE';
 
 // --- Join Department (user logged in but has no department) ---
 function JoinDepartmentView(props: {
@@ -78,16 +87,22 @@ function JoinDepartmentView(props: {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden" style={{background: 'linear-gradient(160deg, #FAF8F6 0%, #FFF3E8 50%, #FAF8F6 100%)'}}>
-      <div className="hs-blob w-32 h-32 -top-8 -right-8" style={{background: '#4A90D9', animationDelay: '0s'}} />
-      <div className="hs-blob w-20 h-20 bottom-24 -left-6" style={{background: '#F47C20', animationDelay: '2s'}} />
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-slate-50">
+      <div className="hs-blob w-32 h-32 -top-8 -right-8 bg-indigo-100 opacity-60" style={{ animationDelay: '0s' }} />
+      <div className="hs-blob w-24 h-24 bottom-24 -left-6 bg-amber-100 opacity-50" style={{ animationDelay: '2s' }} />
 
       <div className="w-full max-w-md space-y-6 relative z-10">
         <div className="text-center">
-          <div className="w-16 h-16 rounded-full mx-auto flex items-center justify-center shadow-lg mb-4" style={{background: '#F47C20'}}>
-            <Building2 className="text-white" size={28} />
+          <div className="mx-auto mb-5 flex justify-center">
+            <img
+              src="/rostersync-lockup-color.svg"
+              alt="RosterSync"
+              width={400}
+              height={88}
+              className="h-12 w-auto sm:h-14 md:h-16 max-w-[min(100%,280px)] object-contain object-left"
+            />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Join a department</h1>
+          <h1 className="rs-h2 text-slate-900 tracking-tight">Join a department</h1>
           <p className="text-slate-500 text-xs font-bold mt-2 uppercase tracking-wider">
             Enter the department code from your admin or team
           </p>
@@ -95,24 +110,25 @@ function JoinDepartmentView(props: {
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-sm text-rose-700 font-bold">
-                {error}
+              <div className="rs-alert rs-alert--danger" role="alert">
+                <div className="rs-alert-body text-sm font-semibold">{error}</div>
               </div>
             )}
             {success && !error && (
-              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-sm text-emerald-700 font-bold">
-                {success}
+              <div className="rs-alert rs-alert--success" role="status">
+                <div className="rs-alert-body text-sm font-semibold">{success}</div>
               </div>
             )}
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">
+            <div className="rs-field">
+              <label className="rs-label uppercase tracking-widest text-[10px] text-slate-500" htmlFor="join-dept-code">
                 Department code
               </label>
               <input
+                id="join-dept-code"
                 type="text"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
-                className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 text-sm font-bold uppercase tracking-widest outline-none"
+                className="rs-input font-semibold uppercase tracking-widest"
                 placeholder="e.g. ABC12XYZ"
                 maxLength={12}
                 autoFocus
@@ -143,14 +159,22 @@ export default function App() {
   const [view, setView] = useState<AppShellView>('DASHBOARD');
   const [roster, setRoster] = useState<Roster | null>(null);
   const [requests, setRequests] = useState<Request[]>([]);
+  /** Approved dept-wide markers without reasons (doctors only); admins leave this empty. */
+  const [publicApprovedMarkers, setPublicApprovedMarkers] = useState<ApprovedScheduleMarker[]>([]);
   const [doctors, setDoctors] = useState<User[]>([]);
   const [fairnessReport, setFairnessReport] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [useBackend, setUseBackend] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [infoBanner, setInfoBanner] = useState<string | null>(null);
   const [selectedMonthOffset, setSelectedMonthOffset] = useState<0 | 1>(0); // 0 = this month, 1 = next month
+  /** When set, main roster/analytics data is for this calendar month (from Past rosters). */
+  const [historicalRosterLock, setHistoricalRosterLock] = useState<{ year: number; month: number } | null>(null);
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const lastQuietMarkerFetchAtRef = useRef(0);
+  /** Skip one view-based marker fetch after initial load (roster load already populated markers). */
+  const skipInitialViewMarkerRefreshRef = useRef(true);
 
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -189,7 +213,7 @@ export default function App() {
         const savedId = api.getDepartmentId();
         const valid = savedId && depts.some((d: Department) => d.id === savedId);
         api.setDepartmentId(valid ? savedId : depts[0].id);
-        await loadData();
+        await loadData({ user, fromAuth: true });
       }
     } catch (error) {
       console.warn('Backend not available, using localStorage fallback');
@@ -209,7 +233,14 @@ export default function App() {
     const savedRoster = localStorage.getItem('rs_roster_v2');
     const savedReqs = localStorage.getItem('rs_requests_v2');
     if (savedDocs) setDoctors(JSON.parse(savedDocs));
-    if (savedReqs) setRequests(JSON.parse(savedReqs));
+    if (savedReqs) {
+      let reqs = JSON.parse(savedReqs) as Request[];
+      const u = savedUser ? (JSON.parse(savedUser) as User) : null;
+      if (u && u.role !== Role.ADMIN && u.id) {
+        reqs = reqs.filter((r) => r.doctorId === u.id);
+      }
+      setRequests(reqs);
+    }
     if (savedRoster) setRoster(JSON.parse(savedRoster));
   };
 
@@ -222,8 +253,30 @@ export default function App() {
     return { month, year };
   };
 
-  const loadRosterForOffset = async (offset: 0 | 1) => {
+  const refreshPublicApprovedSchedule = useCallback(
+    async (forUser: User | null, historicalLock: { year: number; month: number } | null) => {
+      if (!useBackend || !forUser || forUser.role === Role.ADMIN) {
+        setPublicApprovedMarkers([]);
+        return;
+      }
+      try {
+        const m0 = getTargetMonthYear(0);
+        const m1 = getTargetMonthYear(1);
+        const slots = [m0, m1];
+        if (historicalLock) slots.push(historicalLock);
+        const { start, end } = spanCalendarMonths(slots);
+        const { entries } = await api.getApprovedSchedule(start, end);
+        setPublicApprovedMarkers(entries ?? []);
+      } catch {
+        setPublicApprovedMarkers([]);
+      }
+    },
+    [useBackend]
+  );
+
+  const loadRosterForOffset = async (offset: 0 | 1, actingUserOverride?: User | null) => {
     if (!useBackend) return;
+    setHistoricalRosterLock(null);
     try {
       setLoading(true);
       const { month, year } = getTargetMonthYear(offset);
@@ -250,6 +303,7 @@ export default function App() {
       } catch {
         /* keep existing doctors list */
       }
+      await refreshPublicApprovedSchedule(actingUserOverride ?? currentUser, null);
     } catch (error: any) {
       setApiError(error.message);
       console.error('Failed to load roster:', error);
@@ -258,24 +312,58 @@ export default function App() {
     }
   };
 
-  const loadData = async () => {
+  const loadRosterForYearMonth = async (year: number, month: number, actingUserOverride?: User | null) => {
     if (!useBackend) return;
+    try {
+      setLoading(true);
+      setHistoricalRosterLock({ year, month });
+      const rosterData = await api.getRoster(year, month).catch(() => null);
+      if (rosterData) {
+        setRoster(rosterData);
+        try {
+          const report = await api.getFairnessReport(year, month);
+          setFairnessReport(report);
+        } catch {
+          setFairnessReport(null);
+        }
+      } else {
+        setRoster(null);
+        setFairnessReport(null);
+      }
+      try {
+        const doctorsData = await api.getDoctors(year).catch(() => []);
+        setDoctors(doctorsData);
+      } catch {
+        /* keep */
+      }
+      await refreshPublicApprovedSchedule(actingUserOverride ?? currentUser, { year, month });
+    } catch (error: any) {
+      setApiError(error.message);
+      console.error('Failed to load roster for', year, month, error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadData = async (opts?: { user?: User | null; fromAuth?: boolean }) => {
+    if (!opts?.fromAuth && !useBackend) return;
+    const actingUser = opts?.user ?? currentUser;
     try {
       setLoading(true);
       const initialYear = getTargetMonthYear(0).year;
       const [doctorsData, requestsData, joinReqData] = await Promise.all([
         api.getDoctors(initialYear).catch(() => []),
         api.getRequests().catch(() => []),
-        currentUser?.role === Role.ADMIN ? api.getJoinRequests().catch(() => ({ requests: [] })) : Promise.resolve({ requests: [] as any[] })
+        actingUser?.role === Role.ADMIN ? api.getJoinRequests().catch(() => ({ requests: [] })) : Promise.resolve({ requests: [] as any[] })
       ]);
       setDoctors(doctorsData);
       setRequests(requestsData);
-      if (currentUser?.role === Role.ADMIN) {
+      if (actingUser?.role === Role.ADMIN) {
         setJoinRequests(joinReqData.requests || []);
       }
 
       // Load this month's roster by default
-      await loadRosterForOffset(0);
+      await loadRosterForOffset(0, actingUser ?? null);
     } catch (error: any) {
       setApiError(error.message);
       console.error('Failed to load data:', error);
@@ -283,6 +371,50 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  const calendarApprovedRequests = useMemo(() => {
+    if (!currentUser) return [];
+    if (currentUser.role === Role.ADMIN) {
+      return requests.filter((r) => r.status === RequestStatus.APPROVED);
+    }
+    return mergeApprovedForCalendar(requests, publicApprovedMarkers);
+  }, [currentUser, requests, publicApprovedMarkers]);
+
+  /** Quiet refetch for doctors: same range as roster markers (no full roster reload). */
+  const refreshDoctorApprovedMarkersQuiet = useCallback(async () => {
+    await refreshPublicApprovedSchedule(currentUser, historicalRosterLock);
+  }, [refreshPublicApprovedSchedule, currentUser, historicalRosterLock]);
+
+  useEffect(() => {
+    if (!useBackend || !currentUser || currentUser.role === Role.ADMIN) return;
+    const debounceMs = 450;
+    const maybeRefresh = () => {
+      const now = Date.now();
+      if (now - lastQuietMarkerFetchAtRef.current < debounceMs) return;
+      lastQuietMarkerFetchAtRef.current = now;
+      void refreshDoctorApprovedMarkersQuiet();
+    };
+    const onWindowFocus = () => maybeRefresh();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') maybeRefresh();
+    };
+    window.addEventListener('focus', onWindowFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onWindowFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [useBackend, currentUser, refreshDoctorApprovedMarkersQuiet]);
+
+  useEffect(() => {
+    if (!useBackend || !currentUser || currentUser.role === Role.ADMIN) return;
+    if (view !== 'ROSTER' && view !== 'ANALYTICS' && view !== 'DASHBOARD') return;
+    if (skipInitialViewMarkerRefreshRef.current) {
+      skipInitialViewMarkerRefreshRef.current = false;
+      return;
+    }
+    void refreshDoctorApprovedMarkersQuiet();
+  }, [view, useBackend, currentUser, refreshDoctorApprovedMarkersQuiet]);
 
   const handleLogin = async (email: string, password: string) => {
     try {
@@ -297,7 +429,7 @@ export default function App() {
         const savedId = api.getDepartmentId();
         const valid = savedId && depts.some((d: Department) => d.id === savedId);
         api.setDepartmentId(valid ? savedId : depts[0].id);
-        await loadData();
+        await loadData({ user, fromAuth: true });
       } else {
         api.setDepartmentId(null);
       }
@@ -317,7 +449,7 @@ export default function App() {
       if (user.role === 'ADMIN' && department) {
         api.setDepartmentId(department.id);
         setNewDepartmentCode(department.code);
-        await loadData();
+        await loadData({ user, fromAuth: true });
       } else {
         api.setDepartmentId(null);
       }
@@ -327,18 +459,20 @@ export default function App() {
   };
 
   const handleJoinDepartmentSuccess = async () => {
+    const { user } = await api.verify();
+    setCurrentUser(user);
     const { departments: depts } = await api.getDepartments();
     setDepartments(depts || []);
     if ((depts?.length ?? 0) > 0) {
       api.setDepartmentId(depts[0].id);
-      await loadData();
+      await loadData({ user, fromAuth: true });
     }
   };
 
   const handleSwitchDepartment = async (dept: Department) => {
     api.setDepartmentId(dept.id);
     setDepartmentDropdownOpen(false);
-    await loadData();
+    await loadData({ fromAuth: true });
   };
 
   const handleLogout = () => {
@@ -353,6 +487,8 @@ export default function App() {
     setRequests([]);
     setDoctors([]);
     setFairnessReport(null);
+    setPublicApprovedMarkers([]);
+    skipInitialViewMarkerRefreshRef.current = true;
   };
 
   const handleCopyDepartmentCode = async (code?: string | null) => {
@@ -367,16 +503,25 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (!infoBanner) return;
+    const t = window.setTimeout(() => setInfoBanner(null), 5000);
+    return () => window.clearTimeout(t);
+  }, [infoBanner]);
+
   const handleRegenerateSelected = async () => {
     const offset = selectedMonthOffset;
     const { month: targetMonth, year: targetYear } = getTargetMonthYear(offset);
+    const wasFinal = roster?.status === 'FINAL';
 
     if (!useBackend) {
       const { RosterEngine } = await import('./rosterEngine');
       const { roster: newRoster, report } = RosterEngine.generate(targetMonth, targetYear, doctors, requests);
-      setRoster(newRoster);
+      const out = wasFinal ? { ...newRoster, status: 'FINAL' as const } : newRoster;
+      setRoster(out);
       setFairnessReport(report);
-      localStorage.setItem('rs_roster_v2', JSON.stringify(newRoster));
+      localStorage.setItem('rs_roster_v2', JSON.stringify(out));
+      if (wasFinal) setInfoBanner('Roster updated. If hours changed, run sync on Balance.');
       return;
     }
 
@@ -385,6 +530,7 @@ export default function App() {
       const { roster: newRoster, report } = await api.generateRoster(targetMonth, targetYear);
       setRoster(newRoster);
       setFairnessReport(report);
+      if (wasFinal) setInfoBanner('Roster updated. If hours changed, run sync on Balance.');
     } catch (error: any) {
       setApiError(error.message);
       console.error('Failed to regenerate roster:', error);
@@ -525,6 +671,7 @@ export default function App() {
     try {
       await api.publishRoster(roster.id);
       setRoster({ ...roster, status: 'FINAL' });
+      setInfoBanner('Published.');
     } catch (error: any) {
       setApiError(error.message);
       console.error('Failed to publish roster:', error);
@@ -560,25 +707,33 @@ export default function App() {
   const mainBottomPad = 'pb-[calc(5.35rem+env(safe-area-inset-bottom,0px))]';
 
   const goNav = (v: AppShellView) => {
+    const restoreRoster = historicalRosterLock !== null && v !== 'ROSTER';
     setView(v);
     setMobileNavOpen(false);
     setDepartmentDropdownOpen(false);
+    if (restoreRoster && useBackend) {
+      void loadRosterForOffset(selectedMonthOffset);
+    }
   };
 
-  const drawerLinks: { view: AppShellView; label: string; Icon: typeof History }[] = isDeptAdmin
+  type ShellNavIcon = React.ComponentType<{ size?: number | string; strokeWidth?: number | string; className?: string; 'aria-hidden'?: boolean }>;
+  const drawerLinks: { view: AppShellView; label: string; Icon: ShellNavIcon }[] = isDeptAdmin
     ? [
-        { view: 'DASHBOARD', label: 'Home', Icon: History },
+        { view: 'DASHBOARD', label: 'Home', Icon: House },
         { view: 'ROSTER', label: 'Roster', Icon: Calendar },
         { view: 'ANALYTICS', label: 'Metrics', Icon: BarChart3 },
         { view: 'REQUESTS', label: 'Requests', Icon: AlertCircle },
         { view: 'DOCTORS', label: 'Staff', Icon: Users },
         { view: 'TUNING', label: 'Balance', Icon: SlidersHorizontal },
+        { view: 'ARCHIVE', label: 'Past rosters', Icon: Archive },
       ]
     : [
-        { view: 'DASHBOARD', label: 'Home', Icon: History },
+        { view: 'DASHBOARD', label: 'Home', Icon: House },
         { view: 'ROSTER', label: 'Roster', Icon: Calendar },
         { view: 'ANALYTICS', label: 'Metrics', Icon: BarChart3 },
+        { view: 'TUNING', label: 'Balance', Icon: SlidersHorizontal },
         { view: 'REQUESTS', label: 'Requests', Icon: AlertCircle },
+        { view: 'ARCHIVE', label: 'Past rosters', Icon: Archive },
       ];
 
   return (
@@ -586,7 +741,17 @@ export default function App() {
       {apiError && (
         <div className="bg-amber-50 border-b border-amber-200 p-3 text-center">
           <p className="text-xs font-bold text-amber-700">{apiError}</p>
-          <button onClick={() => setApiError(null)} className="text-xs text-amber-600 mt-1">Dismiss</button>
+          <button type="button" onClick={() => setApiError(null)} className="text-xs text-amber-600 mt-1 touch-manipulation min-h-[44px] px-3 inline-flex items-center justify-center rounded-xl">
+            Dismiss
+          </button>
+        </div>
+      )}
+      {infoBanner && (
+        <div className="bg-slate-100 border-b border-slate-200 px-3 py-2.5 text-center">
+          <p className="text-[11px] font-bold text-slate-600">{infoBanner}</p>
+          <button type="button" onClick={() => setInfoBanner(null)} className="text-[10px] font-bold text-slate-500 mt-1 touch-manipulation min-h-[40px] px-2">
+            Dismiss
+          </button>
         </div>
       )}
       {!useBackend && (
@@ -608,11 +773,14 @@ export default function App() {
           </button>
         </div>
       )}
-      <header className="bg-white border-b border-slate-200 p-4 sticky top-0 z-40 flex items-center justify-between gap-2 safe-top no-print" style={{boxShadow: '0 2px 16px rgba(244,124,32,0.06)'}}>
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+      <header
+        className="bg-white border-b border-slate-200 px-3 py-2.5 sm:px-4 sm:py-3 md:px-6 md:py-3.5 sticky top-0 z-40 flex min-h-[3.25rem] sm:min-h-14 items-center gap-2 sm:gap-3 md:gap-6 safe-top no-print"
+        style={{ boxShadow: 'var(--rs-shadow-sm)' }}
+      >
+        <div className="flex h-full min-h-[2.75rem] items-center gap-2 sm:gap-3 shrink-0">
           <button
             type="button"
-            className="md:hidden shrink-0 -ml-1 p-2.5 rounded-2xl text-slate-800 hover:bg-slate-100 active:bg-slate-200 touch-manipulation transition-colors"
+            className="md:hidden shrink-0 -ml-0.5 p-2.5 rounded-2xl text-slate-800 hover:bg-slate-100 active:bg-slate-200 touch-manipulation transition-colors self-center"
             aria-expanded={mobileNavOpen}
             aria-controls="mobile-nav-drawer"
             aria-label="Open navigation menu"
@@ -620,63 +788,81 @@ export default function App() {
           >
             <Menu size={22} strokeWidth={2.25} aria-hidden />
           </button>
-          <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center shadow-sm shrink-0">
-            <ShieldCheck className="text-white" size={18} />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-xs font-black text-slate-900 uppercase tracking-tight">RosterSync</h2>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {departments.length > 1 ? (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setDepartmentDropdownOpen(!departmentDropdownOpen)}
-                    className="flex items-center gap-1 text-[9px] font-bold text-slate-500 uppercase tracking-tighter hover:text-indigo-600"
-                  >
-                    <Building2 size={12} />
-                    {currentDepartment?.name || currentDepartment?.code || 'Department'}
-                    <ChevronDown size={12} className={departmentDropdownOpen ? 'rotate-180' : ''} />
-                  </button>
-                  {departmentDropdownOpen && (
-                    <>
-                      <div className="fixed inset-0 z-30" onClick={() => setDepartmentDropdownOpen(false)} aria-hidden />
-                      <div className="absolute left-0 top-full mt-1 py-1 bg-white border border-slate-200 rounded-2xl z-40 min-w-[160px]" style={{boxShadow: '0 8px 24px rgba(244,124,32,0.12)'}}>
-                        {departments.map((d) => (
-                          <button
-                            key={d.id}
-                            type="button"
-                            onClick={() => handleSwitchDepartment(d)}
-                            className={`block w-full text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider ${d.id === api.getDepartmentId() ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                          >
-                            {d.name || d.code}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">
-                  {currentDepartment?.name || currentDepartment?.code || ''}
-                </span>
-              )}
-              {currentUser.role === Role.ADMIN && currentDepartment?.code && (
+          <button
+            type="button"
+            onClick={() => goNav('DASHBOARD')}
+            className="inline-flex shrink-0 items-center justify-center self-center rounded-xl md:rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 touch-manipulation transition-opacity hover:opacity-90 active:opacity-80 py-0.5"
+            aria-label="Go to home overview"
+          >
+            <img
+              src="/rostersync-lockup-color.svg"
+              alt=""
+              width={200}
+              height={44}
+              className="pointer-events-none h-[1.65rem] w-auto sm:h-7 md:h-8 max-w-[140px] sm:max-w-[180px] object-contain object-left align-middle"
+            />
+          </button>
+        </div>
+
+        <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 md:gap-1.5 self-stretch py-0.5 md:px-4">
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-center gap-x-2 gap-y-1.5 sm:gap-x-3 md:gap-x-5 lg:gap-x-8 md:max-w-4xl md:mx-auto">
+            {departments.length > 1 ? (
+              <div className="relative max-w-full min-w-0 flex justify-center">
                 <button
                   type="button"
-                  onClick={() => handleCopyDepartmentCode(currentDepartment.code)}
-                  className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-[8px] font-black text-indigo-700 uppercase tracking-widest border border-indigo-100"
+                  onClick={() => setDepartmentDropdownOpen(!departmentDropdownOpen)}
+                  className="flex max-w-full min-w-0 items-center gap-1.5 text-[10px] sm:text-[11px] md:text-xs font-bold text-slate-600 uppercase tracking-tight md:tracking-wide hover:text-indigo-600 text-center"
                 >
-                  Code: {currentDepartment.code}
-                  <span className="text-[9px] underline">Copy</span>
+                  <Building2 size={14} className="shrink-0 text-slate-400" />
+                  <span className="truncate">{currentDepartment?.name || currentDepartment?.code || 'Department'}</span>
+                  <ChevronDown size={14} className={`shrink-0 text-slate-400 ${departmentDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
-              )}
-              <span className="text-[9px] text-slate-400 font-bold">• {currentUser.name}</span>
-            </div>
+                {departmentDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setDepartmentDropdownOpen(false)} aria-hidden />
+                    <div className="absolute left-1/2 top-full z-40 mt-1 min-w-[180px] max-w-[min(90vw,280px)] -translate-x-1/2 rounded-[var(--rs-r-lg)] border border-slate-200 bg-white py-1 shadow-md">
+                      {departments.map((d) => (
+                        <button
+                          key={d.id}
+                          type="button"
+                          onClick={() => handleSwitchDepartment(d)}
+                          className={`block w-full px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider sm:text-[11px] ${d.id === api.getDepartmentId() ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                        >
+                          {d.name || d.code}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <span className="min-w-0 max-w-full shrink truncate text-center text-[10px] font-bold uppercase tracking-tight text-slate-600 sm:text-[11px] md:max-w-xl md:text-xs md:tracking-wide">
+                {currentDepartment?.name || currentDepartment?.code || ''}
+              </span>
+            )}
+            {currentUser.role === Role.ADMIN && currentDepartment?.code && (
+              <button
+                type="button"
+                onClick={() => handleCopyDepartmentCode(currentDepartment.code)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-indigo-700 sm:text-[9px] md:px-3 md:py-1.5 md:text-[10px]"
+              >
+                <span className="hidden sm:inline">Code:</span>
+                <span className="sm:hidden">Code</span> {currentDepartment.code}
+                <span className="text-[9px] underline sm:text-[10px]">Copy</span>
+              </button>
+            )}
+            <span className="min-w-0 max-w-full shrink truncate text-[10px] font-bold text-slate-500 sm:max-w-[14rem] md:max-w-xs md:text-xs">
+              <span className="text-slate-300 md:mr-1.5">•</span>
+              {currentUser.name}
+            </span>
           </div>
         </div>
-        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors shrink-0" type="button" aria-label="Sign out">
-          <LogOut size={20} />
-        </button>
+
+        <div className="shrink-0 flex min-h-[2.75rem] items-center justify-center self-stretch pl-0.5 md:pl-2">
+          <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors touch-manipulation self-center" type="button" aria-label="Sign out">
+            <LogOut size={20} />
+          </button>
+        </div>
       </header>
 
       {mobileNavOpen && (
@@ -728,14 +914,14 @@ export default function App() {
         </div>
       )}
 
-      <main className="relative flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 sm:p-4 max-w-lg mx-auto w-full space-y-6 animate-in fade-in duration-500 pb-2">
+      <main className="relative flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 sm:p-5 max-w-lg md:max-w-rs md:px-10 mx-auto w-full space-y-6 animate-in fade-in duration-500 pb-2">
         {loading && (
           <div
-            className="absolute inset-0 z-40 flex flex-col items-center justify-start pt-28 bg-white/55 backdrop-blur-[2px] transition-opacity duration-200"
+            className="no-print absolute inset-0 z-40 flex flex-col items-center justify-start pt-28 bg-white/55 backdrop-blur-[2px] transition-opacity duration-200"
             aria-busy="true"
             aria-live="polite"
           >
-            <div className="flex flex-col items-center gap-3 rounded-3xl bg-white/95 px-8 py-6 border border-slate-100" style={{boxShadow: '0 8px 32px rgba(244,124,32,0.12)'}}>
+            <div className="flex flex-col items-center gap-3 rounded-[var(--rs-r-xl)] bg-white/95 px-8 py-6 border border-slate-200 shadow-md">
               <Loader2 className="w-9 h-9 text-indigo-600 animate-spin" />
               <p className="text-xs font-bold text-slate-500 text-center max-w-[200px]">
                 Updating roster…
@@ -767,11 +953,27 @@ export default function App() {
             report={fairnessReport}
             currentUser={currentUser} 
             doctors={doctors}
-            requests={requests}
+            calendarApprovedRequests={calendarApprovedRequests}
             onUpdateShift={handleUpdateShift}
             selectedMonthOffset={selectedMonthOffset}
             onChangeMonth={async (offset) => {
               await loadRosterForOffset(offset);
+            }}
+            departmentName={currentDepartment?.name || currentDepartment?.code || 'Department'}
+            viewingHistoricalRoster={historicalRosterLock !== null}
+            onExitHistoricalRoster={() => void loadRosterForOffset(0)}
+          />
+        )}
+        {view === 'ARCHIVE' && (
+          <RosterHistoryView
+            useBackend={useBackend}
+            doctors={doctors}
+            requests={requests}
+            departmentName={currentDepartment?.name || currentDepartment?.code || 'Department'}
+            currentUser={currentUser}
+            onOpenInRoster={async (year, month) => {
+              await loadRosterForYearMonth(year, month, currentUser);
+              setView('ROSTER');
             }}
           />
         )}
@@ -780,7 +982,7 @@ export default function App() {
             report={fairnessReport}
             doctors={doctors}
             roster={roster}
-            requests={requests}
+            requests={calendarApprovedRequests}
             currentUser={currentUser}
             selectedMonthOffset={selectedMonthOffset}
             onChangeMonth={async (offset) => { await loadRosterForOffset(offset); }}
@@ -818,6 +1020,7 @@ export default function App() {
             report={fairnessReport}
             doctors={doctors}
             roster={roster}
+            isAdmin={currentUser.role === Role.ADMIN}
             onFairnessSettingsSaved={() => loadRosterForOffset(selectedMonthOffset)}
           />
         )}
@@ -830,7 +1033,7 @@ export default function App() {
       >
         {/* Mobile: three primary shortcuts */}
         <div className="flex md:hidden flex-row justify-around items-stretch w-full pt-2 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] border-t border-slate-100">
-          <TabItem active={view === 'DASHBOARD'} icon={<History size={20} />} label="Home" onClick={() => goNav('DASHBOARD')} />
+          <TabItem active={view === 'DASHBOARD'} icon={<House size={20} />} label="Home" onClick={() => goNav('DASHBOARD')} />
           <TabItem active={view === 'ROSTER'} icon={<Calendar size={20} />} label="Roster" onClick={() => goNav('ROSTER')} />
           <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={20} />} label="Requests" onClick={() => goNav('REQUESTS')} />
         </div>
@@ -838,19 +1041,22 @@ export default function App() {
         {/* md+: full tab bar */}
         {isDeptAdmin ? (
           <div className="hidden md:flex flex-row justify-around items-stretch w-full py-2.5 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom,0px))] border-t border-slate-100">
-            <TabItem active={view === 'DASHBOARD'} icon={<History size={19} />} label="Home" onClick={() => setView('DASHBOARD')} />
-            <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => setView('ROSTER')} />
-            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => setView('ANALYTICS')} />
-            <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => setView('REQUESTS')} />
-            <TabItem active={view === 'DOCTORS'} icon={<Users size={19} />} label="Staff" onClick={() => setView('DOCTORS')} />
-            <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => setView('TUNING')} />
+            <TabItem active={view === 'DASHBOARD'} icon={<House size={19} />} label="Home" onClick={() => goNav('DASHBOARD')} />
+            <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => goNav('ROSTER')} />
+            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => goNav('ANALYTICS')} />
+            <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => goNav('REQUESTS')} />
+            <TabItem active={view === 'DOCTORS'} icon={<Users size={19} />} label="Staff" onClick={() => goNav('DOCTORS')} />
+            <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => goNav('TUNING')} />
+            <TabItem active={view === 'ARCHIVE'} icon={<Archive size={19} />} label="Past" onClick={() => goNav('ARCHIVE')} />
           </div>
         ) : (
           <div className="hidden md:flex flex-row justify-around items-stretch w-full py-2 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] border-t border-slate-100">
-            <TabItem active={view === 'DASHBOARD'} icon={<History size={19} />} label="Home" onClick={() => setView('DASHBOARD')} />
-            <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => setView('ROSTER')} />
-            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => setView('ANALYTICS')} />
-            <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => setView('REQUESTS')} />
+            <TabItem active={view === 'DASHBOARD'} icon={<House size={19} />} label="Home" onClick={() => goNav('DASHBOARD')} />
+            <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => goNav('ROSTER')} />
+            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => goNav('ANALYTICS')} />
+            <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => goNav('TUNING')} />
+            <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => goNav('REQUESTS')} />
+            <TabItem active={view === 'ARCHIVE'} icon={<Archive size={19} />} label="Past" onClick={() => goNav('ARCHIVE')} />
           </div>
         )}
       </nav>
@@ -868,7 +1074,7 @@ const TabItem: React.FC<{
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 max-w-[6rem] py-1 touch-manipulation transition-colors ${active ? 'text-indigo-600' : 'text-slate-400'}`}
+      className={`flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0 max-w-[6.5rem] min-h-[52px] md:min-h-[48px] py-2 md:py-1.5 touch-manipulation transition-colors ${active ? 'text-indigo-600' : 'text-slate-400'}`}
     >
       <div className={`rounded-2xl shrink-0 transition-all p-1 md:p-1.5 ${active ? 'bg-indigo-50' : ''}`}>{icon}</div>
       <span className="text-[8px] md:text-[8px] font-extrabold uppercase tracking-wide text-center leading-tight px-0.5 line-clamp-2 break-words w-full">
@@ -1151,7 +1357,6 @@ const DashboardView: React.FC<{
   const warnYear = roster?.year ?? targetMY.year;
   const dashboardWarnings = getRosterWarningsForView(report?.warnings, warnMonth, warnYear);
   const todayDisplay = `${fullMonthNames[today.getMonth()].toUpperCase()} ${today.getDate()}`;
-  const isPublished = roster?.status === 'FINAL';
   const go = onNavigate ?? (() => {});
   const fh = fairnessHistoryContext(doctors, warnYear);
 
@@ -1159,12 +1364,13 @@ const DashboardView: React.FC<{
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Overview</h1>
+          <h1 className="rs-h2 text-slate-900 tracking-tight">Overview</h1>
           {/* Month Toggle */}
-          <div className="flex bg-slate-100 rounded-2xl p-1">
+          <div className="flex bg-slate-100 rounded-2xl p-1 gap-0.5">
             <button
+              type="button"
               onClick={() => onChangeMonth(0)}
-              className={`px-3 py-1.5 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all ${
+              className={`px-4 py-2.5 min-h-11 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all touch-manipulation ${
                 selectedMonthOffset === 0
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
@@ -1173,8 +1379,9 @@ const DashboardView: React.FC<{
               This Month
             </button>
             <button
+              type="button"
               onClick={() => onChangeMonth(1)}
-              className={`px-3 py-1.5 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all ${
+              className={`px-4 py-2.5 min-h-11 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all touch-manipulation ${
                 selectedMonthOffset === 1
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
@@ -1185,15 +1392,20 @@ const DashboardView: React.FC<{
           </div>
         </div>
         {isAdmin && (
-          <div className="flex gap-2">
-            <Button onClick={onRegenerate} variant="secondary" className="px-3 h-10 text-[10px]" disabled={loading || !roster || isPublished}>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              onClick={onRegenerate}
+              variant="secondary"
+              className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0"
+              disabled={loading || !roster}
+            >
               <History size={14} /> REGENERATE
             </Button>
-            <Button onClick={onGenerate} variant="secondary" className="px-3 h-10 text-[10px]" disabled={loading}>
+            <Button onClick={onGenerate} variant="secondary" className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0" disabled={loading}>
               <Plus size={14} /> NEW DRAFT
             </Button>
             {roster && roster.status === 'DRAFT' && (
-              <Button onClick={onPublish} variant="success" className="px-3 h-10 text-[10px]" disabled={loading}>
+              <Button onClick={onPublish} variant="success" className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0" disabled={loading}>
                 <ShieldCheck size={14} /> PUBLISH
               </Button>
             )}
@@ -1208,14 +1420,17 @@ const DashboardView: React.FC<{
           className="text-left rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-600"
         >
           <Card className="p-4 bg-indigo-600 text-white shadow-lg shadow-indigo-100/50 h-full cursor-pointer hover:bg-indigo-500/95 transition-colors group">
-            <div className="flex items-start justify-between gap-2">
-              <span className="text-[10px] font-black uppercase opacity-60 tracking-widest">Active cycle</span>
-              <ChevronRight size={18} className="opacity-50 group-hover:opacity-90 shrink-0" aria-hidden />
+            <div className="flex items-start justify-between gap-2 text-white">
+              <span className="text-[10px] font-black uppercase text-white/60 tracking-widest">Active cycle</span>
+              <ChevronRight size={18} className="text-white/50 group-hover:text-white/90 shrink-0" aria-hidden />
             </div>
-            <div className="mt-2 min-w-0">
-              <div className="text-2xl font-black truncate">{displayMonth}</div>
+            <div className="mt-2 min-w-0 text-white">
+              <div className="text-2xl font-black font-display truncate text-white">{displayMonth}</div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <Badge color={roster?.status === 'FINAL' ? 'green' : !roster && !isAdmin ? 'slate' : 'yellow'}>
+                <Badge
+                  color={roster?.status === 'FINAL' ? 'green' : !roster && !isAdmin ? 'slate' : 'yellow'}
+                  className="border border-white/25 !bg-white/15 !text-white shadow-none"
+                >
                   {!isAdmin && !roster
                     ? 'NOT PUBLISHED'
                     : roster?.status === 'FINAL'
@@ -1223,7 +1438,7 @@ const DashboardView: React.FC<{
                       : roster?.status || 'EMPTY'}
                 </Badge>
               </div>
-              <p className="text-[9px] font-bold opacity-70 mt-2">Open full calendar</p>
+              <p className="text-[9px] font-bold text-white/80 mt-2">Open full calendar</p>
             </div>
           </Card>
         </button>
@@ -1238,9 +1453,13 @@ const DashboardView: React.FC<{
               <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-500 shrink-0" aria-hidden />
             </div>
             <div className="mt-2">
-              <div className="text-2xl font-black text-slate-900">{pendingCount}</div>
-              <div className="text-[9px] font-bold text-amber-500 mt-1 uppercase tracking-tighter">Awaiting review</div>
-              <p className="text-[9px] font-bold text-slate-400 mt-2">Manage time-off & preferences</p>
+              <div className="text-2xl font-black font-display text-slate-900">{pendingCount}</div>
+              <div className="text-[9px] font-bold text-amber-500 mt-1 uppercase tracking-tighter">
+                {isAdmin ? 'Awaiting review' : 'Your requests pending'}
+              </div>
+              <p className="text-[9px] font-bold text-slate-400 mt-2">
+                {isAdmin ? 'Manage team time-off & preferences' : 'Your time-off & preferences'}
+              </p>
             </div>
           </Card>
         </button>
@@ -1319,7 +1538,7 @@ const DashboardView: React.FC<{
                       <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-500 shrink-0" aria-hidden />
                     </div>
                     <div className="mt-2">
-                      <div className="text-2xl font-black text-slate-900">{myHours} hrs</div>
+                      <div className="text-2xl font-black font-display text-slate-900">{myHours} hrs</div>
                       <div className="text-[9px] font-bold text-slate-500 mt-1 uppercase tracking-tighter">
                         {myMetric?.weekendShifts ?? 0} weekend{(myMetric?.weekendShifts ?? 0) !== 1 ? 's' : ''} • {myMetric?.holidayShifts ?? 0} holiday shift{(myMetric?.holidayShifts ?? 0) !== 1 ? 's' : ''}
                       </div>
@@ -1425,11 +1644,15 @@ const RosterView: React.FC<{
   report: any;
   currentUser: User; 
   doctors: User[];
-  requests: Request[];
+  /** Approved-only: full rows for admins; merged public markers + own rows for doctors (no other people’s reasons). */
+  calendarApprovedRequests: Request[];
   onUpdateShift: (shiftId: string, doctorId: string) => void;
   selectedMonthOffset: 0 | 1;
   onChangeMonth: (offset: 0 | 1) => void;
-}> = ({ roster, report, currentUser, doctors, requests, onUpdateShift, selectedMonthOffset, onChangeMonth }) => {
+  departmentName: string;
+  viewingHistoricalRoster?: boolean;
+  onExitHistoricalRoster?: () => void;
+}> = ({ roster, report, currentUser, doctors, calendarApprovedRequests, onUpdateShift, selectedMonthOffset, onChangeMonth, departmentName, viewingHistoricalRoster, onExitHistoricalRoster }) => {
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
   const today = new Date();
   // Calculate month/year from offset if roster is null
@@ -1450,7 +1673,13 @@ const RosterView: React.FC<{
   const initialDay = (today.getMonth() === rosterMonth && today.getFullYear() === rosterYear) ? today.getDate() : 1;
   const [selectedDay, setSelectedDay] = useState(initialDay);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+  const [calendarEditingShiftId, setCalendarEditingShiftId] = useState<string | null>(null);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  useEffect(() => {
+    setEditingShiftId(null);
+    setCalendarEditingShiftId(null);
+  }, [selectedMonthOffset, roster?.id, roster?.month, roster?.year, viewMode]);
 
   const selectedShifts = roster?.shifts.filter(s => new Date(s.date).getDate() === selectedDay) || [];
   const isAdmin = currentUser.role === Role.ADMIN;
@@ -1511,9 +1740,9 @@ const RosterView: React.FC<{
       return SHIFT_TEMPLATES.find(t => !t.isWeekend) ?? null;
     };
 
-    // Build a lookup: dateStr → approved requests for that date
+    // Build a lookup: dateStr → approved requests for that date (team-wide types/names; reasons only on own rows for doctors)
     const requestsByDate: Record<string, Request[]> = {};
-    for (const req of requests) {
+    for (const req of calendarApprovedRequests) {
       if (req.status === RequestStatus.APPROVED) {
         if (!requestsByDate[req.date]) requestsByDate[req.date] = [];
         requestsByDate[req.date].push(req);
@@ -1536,6 +1765,9 @@ const RosterView: React.FC<{
           <h2 className="text-lg font-black text-slate-900">{fullMonthNames[rosterMonth]} {rosterYear}</h2>
           {roster.status === 'FINAL' && <Badge color="green">FINALIZED</Badge>}
         </div>
+        {isAdmin && roster && (
+          <p className="text-[9px] font-bold text-slate-500">Tap an assignment to change the doctor.</p>
+        )}
 
         {rosterWarningsForCalendar.length > 0 && (
           <div className="space-y-1">
@@ -1581,7 +1813,7 @@ const RosterView: React.FC<{
                       return (
                         <td
                           key={dayIdx}
-                          className={`p-0.5 sm:p-1.5 align-top border-r border-slate-100 last:border-r-0 min-w-0 ${
+                          className={`p-1 sm:p-1.5 align-top border-r border-slate-100 last:border-r-0 min-w-0 min-h-[4.25rem] sm:min-h-[3.5rem] ${
                             day < 1 || day > daysInMonth ? 'bg-slate-50' : 'bg-white'
                           } ${isToday ? 'ring-2 ring-inset ring-indigo-500' : ''} ${hasConflict ? 'bg-amber-50' : ''}`}
                         >
@@ -1598,14 +1830,37 @@ const RosterView: React.FC<{
                                   {hasPostCallOff && <span title={`Post-call off: ${postCallNames}`} className="w-1.5 h-1.5 rounded-full bg-purple-500 inline-block" />}
                                 </div>
                               </div>
-                              {shift && shiftInfo && (
+                              {shift && shiftInfo && (isAdmin && roster ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setCalendarEditingShiftId(calendarEditingShiftId === shift.id ? null : shift.id)}
+                                  className={`w-full rounded-md sm:rounded-lg text-left text-[8px] sm:text-[9px] font-bold transition-all min-h-[3rem] min-w-0 overflow-hidden p-2 touch-manipulation active:opacity-90 ${
+                                    isMyShift
+                                      ? 'bg-indigo-600 text-white'
+                                      : shift.isPublicHoliday
+                                        ? 'bg-rose-100 text-rose-700 ring-1 ring-rose-200'
+                                        : 'bg-slate-100 text-slate-700'
+                                  } ${calendarEditingShiftId === shift.id ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`}
+                                  title="Change doctor"
+                                  aria-pressed={calendarEditingShiftId === shift.id}
+                                >
+                                  <div className="font-black leading-tight truncate" title={getDoctorName(shift.doctorId)}>
+                                    {getDoctorName(shift.doctorId).split(' ').pop()}
+                                  </div>
+                                  <div className="text-[7px] sm:text-[8px] opacity-70 mt-0.5 leading-tight line-clamp-2 break-words">{shiftInfo.name}</div>
+                                  <div className="text-[7px] sm:text-[8px] opacity-55 leading-tight">{shiftInfo.totalHours}h</div>
+                                  {shift.isPublicHoliday && (
+                                    <div className="text-[6px] sm:text-[7px] font-black opacity-80 mt-0.5 truncate" title="Public holiday">PH</div>
+                                  )}
+                                </button>
+                              ) : (
                                 <div
-                                  className={`p-1 sm:p-1.5 rounded-md sm:rounded-lg text-[7px] sm:text-[9px] font-bold transition-all min-w-0 overflow-hidden ${
-                                    isMyShift 
-                                      ? 'bg-indigo-600 text-white' 
-                                      : shift.isPublicHoliday 
-                                      ? 'bg-rose-100 text-rose-700 ring-1 ring-rose-200'
-                                      : 'bg-slate-100 text-slate-700'
+                                  className={`p-2 rounded-md sm:rounded-lg text-[8px] sm:text-[9px] font-bold min-w-0 overflow-hidden ${
+                                    isMyShift
+                                      ? 'bg-indigo-600 text-white'
+                                      : shift.isPublicHoliday
+                                        ? 'bg-rose-100 text-rose-700 ring-1 ring-rose-200'
+                                        : 'bg-slate-100 text-slate-700'
                                   }`}
                                   title={`${getDoctorName(shift.doctorId)} — ${shiftInfo.name}, ${shiftInfo.totalHours} hrs${shift.isPublicHoliday ? ' (public holiday)' : ''}`}
                                 >
@@ -1618,7 +1873,7 @@ const RosterView: React.FC<{
                                     <div className="text-[6px] sm:text-[7px] font-black opacity-80 mt-0.5 truncate" title="Public holiday">PH</div>
                                   )}
                                 </div>
-                              )}
+                              ))}
                               {!shift && day >= 1 && day <= daysInMonth && (
                                 <div className="text-[8px] text-slate-300 font-bold italic">No shift</div>
                               )}
@@ -1634,6 +1889,48 @@ const RosterView: React.FC<{
           </div>
         </Card>
 
+        {isAdmin && roster && calendarEditingShiftId && (
+          <Card className="p-4 border-2 border-indigo-200 bg-indigo-50/40">
+            {(() => {
+              const sh = roster.shifts.find((s) => s.id === calendarEditingShiftId);
+              if (!sh) return null;
+              const cur = doctors.find((d) => d.id === sh.doctorId);
+              return (
+                <>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">
+                    Reassign {new Date(sh.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} — {cur?.name ?? 'Unassigned'}
+                  </p>
+                  <p className="text-[8px] font-bold text-slate-500 mb-3">Choose replacement doctor</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {doctors.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => {
+                          onUpdateShift(sh.id, d.id);
+                          setCalendarEditingShiftId(null);
+                        }}
+                        className={`rounded-xl border px-3 py-3.5 min-h-[48px] text-left text-[11px] sm:text-xs font-bold transition-colors touch-manipulation ${
+                          d.id === sh.doctorId ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100'
+                        }`}
+                      >
+                        {d.name}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-3 w-full min-h-11 rounded-xl text-[10px] font-black uppercase text-slate-500 hover:bg-slate-100 touch-manipulation"
+                    onClick={() => setCalendarEditingShiftId(null)}
+                  >
+                    Cancel
+                  </button>
+                </>
+              );
+            })()}
+          </Card>
+        )}
+
         {/* Legend */}
         <div className="flex flex-wrap items-center gap-3 text-[9px] font-bold text-slate-500">
           <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-indigo-600" /><span>Your Shift</span></div>
@@ -1648,7 +1945,7 @@ const RosterView: React.FC<{
 
         {/* How this roster was generated — algorithm explainer */}
         {report && report.metrics?.length > 0 && (
-          <Card className="mt-4 p-4 bg-gradient-to-br from-indigo-50 to-white border border-indigo-100">
+          <Card className="mt-4 p-4 bg-indigo-50 border border-indigo-100">
             <div className="flex items-center gap-2 mb-3">
               <Info size={14} className="text-indigo-500" />
               <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">How this roster was built</h4>
@@ -1699,7 +1996,7 @@ const RosterView: React.FC<{
                 if (!doc) return null;
                 const isMe = doc.id === currentUser.id;
                 const summaryLine = formatHoursSummaryLine(m);
-                const reasoning = buildDoctorReasoning(doc, m, doctors, requests.filter(r => r.status === RequestStatus.APPROVED), rosterMonth, rosterYear);
+                const reasoning = buildDoctorReasoning(doc, m, doctors, calendarApprovedRequests.filter(r => r.status === RequestStatus.APPROVED), rosterMonth, rosterYear);
                 const tagColors: Record<string, string> = {
                   restingHigh:       'bg-slate-200 text-slate-600',
                   catchingUpLow:     'bg-amber-100 text-amber-700',
@@ -1745,49 +2042,69 @@ const RosterView: React.FC<{
   };
 
   return (
-    <div className="space-y-6">
+    <>
+    <div className="space-y-6 no-print">
+      {viewingHistoricalRoster && roster && (
+        <Card className="p-3.5 border border-indigo-100 bg-indigo-50/40 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[11px] font-bold text-indigo-900">
+            Archive: <span className="font-black">{monthAbbr} {roster.year}</span>
+            {roster.status === 'FINAL' ? <span className="text-indigo-600"> · published</span> : <span className="text-indigo-600"> · draft</span>}
+          </p>
+          <Button variant="secondary" className="min-h-11 text-[10px] touch-manipulation shrink-0" type="button" onClick={() => onExitHistoricalRoster?.()}>
+            Back to this &amp; next month
+          </Button>
+        </Card>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Roster</h1>
-          <div className="inline-flex bg-slate-100 rounded-xl p-1 gap-1 text-[10px] font-black">
-            <button
-              onClick={() => onChangeMonth(0)}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                selectedMonthOffset === 0 ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
-              }`}
-            >
-              This Month
-            </button>
-            <button
-              onClick={() => onChangeMonth(1)}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                selectedMonthOffset === 1 ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
-              }`}
-            >
-              Next Month
-            </button>
-          </div>
+          <h1 className="rs-h2 text-slate-900 tracking-tight">Roster</h1>
+          {!viewingHistoricalRoster ? (
+            <div className="inline-flex bg-slate-100 rounded-xl p-1 gap-1 text-[10px] font-black">
+              <button
+                type="button"
+                onClick={() => onChangeMonth(0)}
+                className={`px-4 py-2.5 min-h-11 rounded-lg transition-all touch-manipulation ${
+                  selectedMonthOffset === 0 ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                This Month
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeMonth(1)}
+                className={`px-4 py-2.5 min-h-11 rounded-lg transition-all touch-manipulation ${
+                  selectedMonthOffset === 1 ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                Next Month
+              </button>
+            </div>
+          ) : (
+            <p className="text-[10px] font-bold text-slate-500">Use Past rosters to pick another month.</p>
+          )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
             <button
+              type="button"
               onClick={() => setViewMode('calendar')}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+              className={`px-4 py-2.5 min-h-11 rounded-lg text-[10px] font-black transition-all touch-manipulation ${
                 viewMode === 'calendar' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
               }`}
             >
               Calendar
             </button>
             <button
+              type="button"
               onClick={() => setViewMode('list')}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+              className={`px-4 py-2.5 min-h-11 rounded-lg text-[10px] font-black transition-all touch-manipulation ${
                 viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
               }`}
             >
               List
             </button>
           </div>
-          <Button onClick={handlePrint} variant="secondary" className="px-3 h-10 text-[10px]">
+          <Button onClick={handlePrint} variant="secondary" className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0">
             <Printer size={14} /> EXPORT PDF
           </Button>
         </div>
@@ -1797,17 +2114,18 @@ const RosterView: React.FC<{
         <CalendarView />
       ) : (
         <>
-          {isAdmin && (
+          {isAdmin && roster && (
             <div className="bg-indigo-50 border border-indigo-100 rounded-2xl px-3 py-2 text-[9px] font-bold text-indigo-700">
-              Tip: tap a day below, then use <span className="underline">REASSIGN</span> on a card to swap doctors.
+              Pick a day, then <span className="underline">REASSIGN</span> on the card.
             </div>
           )}
           <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide snap-x">
             {days.map(d => (
               <button 
+                type="button"
                 key={d} 
                 onClick={() => setSelectedDay(d)}
-                className={`flex-shrink-0 w-12 h-18 rounded-2xl flex flex-col items-center justify-center transition-all snap-center border-2 ${
+                className={`flex-shrink-0 min-w-[3rem] w-14 min-h-[3.25rem] rounded-2xl flex flex-col items-center justify-center transition-all snap-center border-2 touch-manipulation active:scale-[0.98] ${
                   selectedDay === d ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400'
                 }`}
               >
@@ -1842,12 +2160,13 @@ const RosterView: React.FC<{
                       </div>
                       <div className="text-right flex flex-col items-end gap-2">
                         <Badge color={s.isPublicHoliday ? 'red' : 'indigo'}>{t?.name}</Badge>
-                        {isAdmin && roster?.status === 'DRAFT' && (
+                        {isAdmin && roster && (
                           <button 
+                            type="button"
                             onClick={() => setEditingShiftId(editingShiftId === s.id ? null : s.id)}
-                            className="text-[9px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1 hover:underline"
+                            className="min-h-10 px-2 rounded-xl text-[9px] font-black text-indigo-600 uppercase tracking-widest inline-flex items-center justify-center gap-1 ring-1 ring-indigo-200 bg-indigo-50/80 touch-manipulation active:bg-indigo-100"
                           >
-                            <Edit2 size={10} /> REASSIGN
+                            <Edit2 size={10} aria-hidden /> REASSIGN
                           </button>
                         )}
                       </div>
@@ -1856,16 +2175,17 @@ const RosterView: React.FC<{
 
                   {editingShiftId === s.id && (
                     <div className="bg-slate-100 rounded-2xl p-4 animate-in slide-in-from-top-2">
-                       <p className="text-[8px] font-black text-slate-400 uppercase mb-2">Select Replacement Doctor:</p>
-                       <div className="grid grid-cols-2 gap-2">
+                       <p className="text-[8px] font-black text-slate-400 uppercase mb-2">Select replacement</p>
+                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                          {doctors.map(d => (
                            <button 
+                            type="button"
                             key={d.id}
                             onClick={() => {
                               onUpdateShift(s.id, d.id);
                               setEditingShiftId(null);
                             }}
-                            className={`p-2 text-[10px] font-bold border rounded-lg transition-colors ${d.id === s.doctorId ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border-slate-200'}`}
+                            className={`min-h-12 px-3 py-3 text-left text-[11px] sm:text-xs font-bold border rounded-xl transition-colors touch-manipulation active:opacity-90 ${d.id === s.doctorId ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                            >
                              {d.name}
                            </button>
@@ -1883,6 +2203,10 @@ const RosterView: React.FC<{
         </>
       )}
     </div>
+    {roster && (
+      <RosterPrintSheet roster={roster} doctors={doctors} requests={calendarApprovedRequests} departmentName={departmentName} report={report} />
+    )}
+    </>
   );
 };
 
@@ -1909,7 +2233,7 @@ const AnalyticsView: React.FC<{
   if (!report) return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Transparency</h1>
+        <h1 className="rs-h2 text-slate-900 tracking-tight">Transparency</h1>
         <div className="inline-flex bg-slate-100 rounded-xl p-1 gap-1 text-[10px] font-black">
           <button onClick={() => onChangeMonth(0)} className={`px-3 py-1.5 rounded-lg transition-all ${selectedMonthOffset === 0 ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>This Month</button>
           <button onClick={() => onChangeMonth(1)} className={`px-3 py-1.5 rounded-lg transition-all ${selectedMonthOffset === 1 ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Next Month</button>
@@ -1934,7 +2258,7 @@ const AnalyticsView: React.FC<{
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Transparency</h1>
+          <h1 className="rs-h2 text-slate-900 tracking-tight">Transparency</h1>
           <p className="text-slate-500 text-xs font-medium mt-1">{monthNames[monthIdx]} {yearIdx} — who worked what, and plain-language notes for each person.</p>
         </div>
         <div className="inline-flex bg-slate-100 rounded-xl p-1 gap-1 text-[10px] font-black">
@@ -1954,7 +2278,7 @@ const AnalyticsView: React.FC<{
         </div>
       )}
 
-      <Card className="p-4 bg-gradient-to-br from-indigo-50 to-white border border-indigo-100">
+      <Card className="p-4 bg-indigo-50 border border-indigo-100">
         <div className="flex items-center gap-2 mb-3">
           <Info size={14} className="text-indigo-500" />
           <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">How the roster is built</h4>
@@ -2102,7 +2426,7 @@ const AnalyticsView: React.FC<{
               <th className="px-3 sm:px-5 py-3">
                 {fhT.isCalendarYear ? `Published in ${schedYear} (hrs)` : 'Published history (hrs)'}
               </th>
-              <th className="px-3 sm:px-5 py-3 text-right whitespace-nowrap">Standing</th>
+              <th className="px-3 sm:px-5 py-3 text-right whitespace-nowrap min-w-[5.5rem] sm:min-w-0">Standing</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -2118,10 +2442,24 @@ const AnalyticsView: React.FC<{
                     <td className="px-3 sm:px-5 py-3 sm:py-4 max-w-[120px] break-words">{doc.name}</td>
                     <td className="px-3 sm:px-5 py-3 sm:py-4 font-black whitespace-nowrap">{n} {shiftWord} ({monthPHHours} hrs)</td>
                     <td className="px-3 sm:px-5 py-3 sm:py-4 font-black whitespace-nowrap">{(doc.cumulativeHolidayHours ?? 0)} hrs</td>
-                    <td className="px-3 sm:px-5 py-3 sm:py-4 text-right">
-                      <Badge color={(doc.cumulativeHolidayHours ?? 0) === 0 ? 'green' : 'slate'}>
-                        {(doc.cumulativeHolidayHours ?? 0) === 0 ? 'Highest priority' : 'In rotation'}
-                      </Badge>
+                    <td className="px-3 sm:px-5 py-3 sm:py-4 text-right align-middle whitespace-nowrap min-w-[5.25rem]">
+                      {(doc.cumulativeHolidayHours ?? 0) === 0 ? (
+                        <Badge
+                          color="green"
+                          noWrap
+                          title="Fewest public-holiday hours on record — usually next in line when PH cover is needed"
+                        >
+                          Due next
+                        </Badge>
+                      ) : (
+                        <Badge
+                          color="slate"
+                          noWrap
+                          title="Holiday hours on record — in normal rotation with the team"
+                        >
+                          Queued
+                        </Badge>
+                      )}
                     </td>
                   </tr>
                 );
@@ -2129,6 +2467,11 @@ const AnalyticsView: React.FC<{
           </tbody>
         </table>
         </div>
+        <p className="px-4 py-2.5 text-[9px] font-bold text-slate-500 bg-slate-50 border-t border-slate-100 leading-relaxed">
+          <span className="font-black uppercase tracking-wider text-slate-400">Standing — </span>
+          <strong className="text-slate-700">Due next</strong>: lightest PH history on this column, usually chosen next when a holiday shift needs cover.{' '}
+          <strong className="text-slate-700">Queued</strong>: in normal rotation with the team. Tags also have a short tooltip.
+        </p>
       </Card>
 
       <button
@@ -2154,8 +2497,10 @@ const TuningView: React.FC<{
   report: any;
   doctors: User[];
   roster: Roster | null;
+  /** When false, department rules are shown read-only (doctors can still see sliders and explanations). */
+  isAdmin: boolean;
   onFairnessSettingsSaved?: () => void | Promise<void>;
-}> = ({ report, doctors, roster, onFairnessSettingsSaved }) => {
+}> = ({ report, doctors, roster, isAdmin, onFairnessSettingsSaved }) => {
   const [hourLimit, setHourLimit] = useState<number>(24);
   const [weekendLimit, setWeekendLimit] = useState<number>(1);
   const [maxShiftsPer7Days, setMaxShiftsPer7Days] = useState<number>(2);
@@ -2185,6 +2530,7 @@ const TuningView: React.FC<{
   }, []);
 
   const handleSave = async () => {
+    if (!isAdmin) return;
     try {
       setSaving(true);
       setSaveMessage(null);
@@ -2239,8 +2585,15 @@ const TuningView: React.FC<{
 
   return (
     <div className="space-y-6">
+      {!isAdmin && (
+        <Card className="p-4 border border-indigo-100 bg-indigo-50/90">
+          <p className="text-[11px] font-bold text-indigo-900 leading-relaxed">
+            <strong>View only.</strong> Balance rules are set by a department admin. If something looks off, ask them to adjust limits or regenerate the draft — you still see the same numbers and guidance they use.
+          </p>
+        </Card>
+      )}
       <div>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Balance settings</h1>
+        <h1 className="rs-h2 text-slate-900 tracking-tight">Balance settings</h1>
         <p className="text-slate-500 text-xs font-medium mt-1 leading-relaxed">
           These controls change <strong>how strict</strong> the schedule is and <strong>when you get a heads-up</strong>. They apply the next time someone runs <strong>New draft</strong> or <strong>Regenerate</strong>.
           The live numbers under each slider describe <strong>{rosterPeriodLabel}</strong> only — one calendar month, not the published workload the scheduler uses when deciding who is ahead or behind.
@@ -2261,12 +2614,13 @@ const TuningView: React.FC<{
         <div className="mt-4 grid gap-3">
           <button
             type="button"
+            disabled={!isAdmin}
             onClick={() => setFairnessHistoryMode('ALL_TIME')}
             className={`text-left p-4 rounded-xl border-2 transition-all ${
               fairnessHistoryMode === 'ALL_TIME'
                 ? 'border-indigo-500 bg-indigo-50/80 shadow-sm'
                 : 'border-slate-100 bg-slate-50/50 hover:border-slate-200'
-            }`}
+            } ${!isAdmin ? 'opacity-80 cursor-not-allowed' : ''}`}
           >
             <div className="text-[11px] font-black text-slate-900">Full history (recommended for steady teams)</div>
             <p className="text-[10px] text-slate-600 mt-1.5 leading-relaxed">
@@ -2275,12 +2629,13 @@ const TuningView: React.FC<{
           </button>
           <button
             type="button"
+            disabled={!isAdmin}
             onClick={() => setFairnessHistoryMode('CALENDAR_YEAR')}
             className={`text-left p-4 rounded-xl border-2 transition-all ${
               fairnessHistoryMode === 'CALENDAR_YEAR'
                 ? 'border-indigo-500 bg-indigo-50/80 shadow-sm'
                 : 'border-slate-100 bg-slate-50/50 hover:border-slate-200'
-            }`}
+            } ${!isAdmin ? 'opacity-80 cursor-not-allowed' : ''}`}
           >
             <div className="text-[11px] font-black text-slate-900">This calendar year only (fresh start each January)</div>
             <p className="text-[10px] text-slate-600 mt-1.5 leading-relaxed">
@@ -2303,7 +2658,9 @@ const TuningView: React.FC<{
           <Button
             variant="secondary"
             className="text-[10px]"
+            disabled={!isAdmin}
             onClick={async () => {
+              if (!isAdmin) return;
               try {
                 const r = await api.syncCumulative();
                 setSaveMessage(r.message || 'Permanent totals recalculated.');
@@ -2332,7 +2689,7 @@ const TuningView: React.FC<{
       <Card className="p-5 space-y-4">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Department rules</h3>
-          <Button onClick={handleSave} variant="primary" className="px-3 h-8 text-[10px]" disabled={saving || loading}>
+          <Button onClick={handleSave} variant="primary" className="px-3 h-8 text-[10px]" disabled={saving || loading || !isAdmin}>
             {saving ? 'Saving…' : 'Save'}
           </Button>
         </div>
@@ -2363,8 +2720,9 @@ const TuningView: React.FC<{
                 max={64}
                 step={8}
                 value={hourLimit}
+                disabled={!isAdmin}
                 onChange={e => setHourLimit(Number(e.target.value))}
-                className="w-full mt-2"
+                className="w-full mt-2 disabled:opacity-50"
               />
               <div className="mt-3 p-3 bg-white rounded-lg border border-slate-100 text-[10px] text-slate-500 leading-relaxed space-y-1.5">
                 <p><span className="font-bold text-slate-700">Tighter (smaller number):</span> you want everyone&apos;s monthly hours almost the same — expect more reminders when leave or holidays skew the month.</p>
@@ -2389,8 +2747,9 @@ const TuningView: React.FC<{
                 max={3}
                 step={1}
                 value={weekendLimit}
+                disabled={!isAdmin}
                 onChange={e => setWeekendLimit(Number(e.target.value))}
-                className="w-full mt-2"
+                className="w-full mt-2 disabled:opacity-50"
               />
               <div className="mt-3 p-3 bg-white rounded-lg border border-slate-100 text-[10px] text-slate-500 leading-relaxed space-y-1.5">
                 <p><span className="font-bold text-slate-700">0–1:</span> weekend duty should look almost even.</p>
@@ -2408,8 +2767,9 @@ const TuningView: React.FC<{
               <select
                 id="rest-between"
                 value={minRestDays}
+                disabled={!isAdmin}
                 onChange={e => setMinRestDays(Number(e.target.value))}
-                className="mt-2 w-full text-[11px] font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2"
+                className="mt-2 w-full text-[11px] font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 disabled:opacity-50"
               >
                 <option value={0}>0 — back-to-back nights allowed (emergency staffing only)</option>
                 <option value={1}>1 — at least one clear day between nights (recommended)</option>
@@ -2428,8 +2788,9 @@ const TuningView: React.FC<{
               <select
                 id="shifts-per-week"
                 value={maxShiftsPer7Days}
+                disabled={!isAdmin}
                 onChange={e => setMaxShiftsPer7Days(Number(e.target.value))}
-                className="mt-2 w-full text-[11px] font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2"
+                className="mt-2 w-full text-[11px] font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 disabled:opacity-50"
               >
                 <option value={1}>1 — at most one night per rolling week (strict)</option>
                 <option value={2}>2 — up to two nights in a busy week (usual default)</option>
@@ -2596,6 +2957,68 @@ const TuningView: React.FC<{
   );
 };
 
+/** Human-readable request type (never raw enum like POST_CALL_OFF). */
+function requestTypeLabel(type: string): string {
+  switch (type) {
+    case RequestType.LEAVE:
+      return 'Full leave';
+    case RequestType.UNAVAILABLE:
+      return 'Prefer not on call';
+    case RequestType.PREFERRED_WORK:
+      return 'Prefer to work';
+    case RequestType.POST_CALL_OFF:
+      return 'Post-call day off';
+    case RequestType.SWAP:
+      return 'Swap request';
+    default:
+      return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+}
+
+function requestStatusLabel(status: string): string {
+  switch (status) {
+    case RequestStatus.PENDING:
+      return 'Pending';
+    case RequestStatus.APPROVED:
+      return 'Approved';
+    case RequestStatus.REJECTED:
+      return 'Rejected';
+    default:
+      return status.replace(/_/g, ' ');
+  }
+}
+
+function statusRank(status: RequestStatus): number {
+  if (status === RequestStatus.PENDING) return 0;
+  if (status === RequestStatus.REJECTED) return 1;
+  return 2;
+}
+
+type RequestTimeFilter = 'this_month' | 'next_month' | 'rolling_90' | 'all';
+
+function requestMatchesTimeFilter(req: Request, filter: RequestTimeFilter): boolean {
+  if (filter === 'all') return true;
+  const [y, m, day] = req.date.split('-').map((n) => parseInt(n, 10));
+  if (!y || !m || !day) return true;
+  const forDate = new Date(y, m - 1, day);
+  const now = new Date();
+  const startThis = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endThis = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const startNext = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const endNext = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59, 999);
+  if (filter === 'this_month') return forDate >= startThis && forDate <= endThis;
+  if (filter === 'next_month') return forDate >= startNext && forDate <= endNext;
+  if (filter === 'rolling_90') {
+    const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const min = new Date(t0);
+    min.setDate(min.getDate() - 90);
+    const max = new Date(t0);
+    max.setDate(max.getDate() + 90);
+    return forDate >= min && forDate <= max;
+  }
+  return true;
+}
+
 const RequestsView: React.FC<{ 
   user: User; 
   requests: Request[]; 
@@ -2605,7 +3028,24 @@ const RequestsView: React.FC<{
 }> = ({ user, requests, onAdd, onStatusChange, doctors }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], type: RequestType.UNAVAILABLE, reason: '' });
+  const [timeFilter, setTimeFilter] = useState<RequestTimeFilter>('this_month');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'resolved'>('all');
   const isAdmin = user.role === Role.ADMIN;
+
+  const filteredSorted = useMemo(() => {
+    const filtered = requests.filter((r) => {
+      if (!requestMatchesTimeFilter(r, timeFilter)) return false;
+      if (statusFilter === 'pending' && r.status !== RequestStatus.PENDING) return false;
+      if (statusFilter === 'resolved' && r.status === RequestStatus.PENDING) return false;
+      return true;
+    });
+    return filtered.sort((a, b) => {
+      const ra = statusRank(a.status);
+      const rb = statusRank(b.status);
+      if (ra !== rb) return ra - rb;
+      return b.createdAt - a.createdAt;
+    });
+  }, [requests, timeFilter, statusFilter]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2624,14 +3064,74 @@ const RequestsView: React.FC<{
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Public Requests</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="rs-h2 text-slate-900 tracking-tight">Requests</h1>
+          <p className="text-[10px] font-bold text-slate-500 mt-1">
+            {isAdmin
+              ? 'Team queue: pending items first. Default view is this month (by the date requested).'
+              : 'Your requests only — other doctors’ notes stay private. Pending first; default is this month.'}
+          </p>
+        </div>
         {!isAdding && (
-          <Button onClick={() => setIsAdding(true)} variant="primary" className="h-10 px-4 text-xs">
-            <Plus size={16} /> SUBMIT
+          <Button onClick={() => setIsAdding(true)} variant="primary" className="min-h-11 px-4 text-xs touch-manipulation shrink-0">
+            <Plus size={16} /> New request
           </Button>
         )}
       </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0">When (for date)</span>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { id: 'this_month' as const, label: 'This month' },
+              { id: 'next_month' as const, label: 'Next month' },
+              { id: 'rolling_90' as const, label: '±90 days' },
+              { id: 'all' as const, label: 'All' },
+            ] as const
+          ).map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTimeFilter(id)}
+              className={`min-h-10 rounded-xl px-3.5 text-[10px] font-black uppercase tracking-wide touch-manipulation transition-colors ${
+                timeFilter === id ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="hidden sm:inline text-slate-200">|</span>
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0">Status</span>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { id: 'all' as const, label: 'All' },
+              { id: 'pending' as const, label: isAdmin ? 'Pending approval' : 'Pending' },
+              { id: 'resolved' as const, label: 'Done' },
+            ] as const
+          ).map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setStatusFilter(id)}
+              className={`min-h-10 rounded-xl px-3.5 text-[10px] font-black uppercase tracking-wide touch-manipulation transition-colors ${
+                statusFilter === id ? 'bg-slate-800 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isAdmin && statusFilter === 'pending' && (
+        <p className="text-[10px] font-bold text-slate-600 leading-relaxed max-w-2xl">
+          Use <strong>Approve</strong> or <strong>Decline</strong> on each card so the roster builder can treat the request as locked in or set aside. That includes soft &ldquo;prefer not&rdquo; days — declining does not delete the request; it tells the scheduler the preference was not accepted for that run.
+        </p>
+      )}
 
       {isAdding && (
         <Card className="p-5 border-2 border-indigo-600 animate-in zoom-in-95">
@@ -2680,24 +3180,32 @@ const RequestsView: React.FC<{
         </Card>
       )}
 
-      <p className="text-[10px] text-slate-500 font-bold">All requests are public. First-come, first-served; earlier requests get priority when the roster is built.</p>
+      <p className="text-[10px] text-slate-500 font-bold leading-relaxed">
+        Requests are visible to your department. When building the roster, earlier submissions and clearer dates help avoid clashes.
+      </p>
+
+      {filteredSorted.length > 0 && (
+        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+          Showing {filteredSorted.length} of {requests.length}
+        </p>
+      )}
 
       <div className="space-y-4">
-        {requests.sort((a,b) => b.createdAt - a.createdAt).map(req => {
+        {filteredSorted.map((req) => {
           const doc = doctors.find(d => d.id === req.doctorId);
           const sameDateCount = requests.filter(r => r.date === req.date).length;
           const hasConflict = sameDateCount > 1;
           return (
             <Card key={req.id} className={hasConflict ? 'border-amber-200 bg-amber-50/30' : ''}>
-              <div className="p-4 flex items-start justify-between">
-                <div className="flex gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-500 border border-slate-200">
+              <div className="p-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex gap-3 min-w-0">
+                  <div className="w-11 h-11 shrink-0 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-500 border border-slate-200 text-sm">
                     {getInitials(doc?.name || doc?.id, '?')}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-sm font-black text-slate-900 tracking-tight">{doc?.name || 'Unknown'}</div>
-                    <div className="text-[9px] text-slate-400 font-bold uppercase mt-0.5 tracking-tighter">
-                      Requested at: {new Date(req.createdAt).toLocaleDateString()} {new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <div className="text-[9px] text-slate-400 font-bold mt-0.5 tracking-tight">
+                      Submitted {new Date(req.createdAt).toLocaleDateString()} · {new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                     <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                        <Badge color={
@@ -2706,28 +3214,60 @@ const RequestsView: React.FC<{
                          req.type === RequestType.PREFERRED_WORK ? 'green' :
                          req.type === RequestType.POST_CALL_OFF ? 'indigo' :
                          'indigo'
-                       }>{req.type}</Badge>
-                       <span className="text-[11px] font-bold text-slate-600">For: {new Date(req.date).toLocaleDateString()}</span>
+                       }>{requestTypeLabel(req.type)}</Badge>
+                       <span className="text-[11px] font-bold text-slate-600">For {new Date(req.date + 'T12:00:00').toLocaleDateString()}</span>
                        {hasConflict && (
-                         <span className="text-[9px] font-black text-amber-600 uppercase">Same date: {sameDateCount} requests — admin may need to choose</span>
+                         <span className="text-[9px] font-black text-amber-600 uppercase">Same day: {sameDateCount} requests</span>
                        )}
                     </div>
                     {isAdmin && req.reason && (
                       <div className="mt-3 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 text-[10px] font-medium text-indigo-700">
-                        <span className="font-black uppercase opacity-60 block mb-1">Confidential Context:</span>
-                        "{req.reason}"
+                        <span className="font-black uppercase opacity-60 block mb-1">Note (team)</span>
+                        <span className="italic">&ldquo;{req.reason}&rdquo;</span>
                       </div>
                     )}
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-3">
+                <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 shrink-0 border-t border-slate-100 pt-3 sm:border-t-0 sm:pt-0">
                   <Badge color={req.status === RequestStatus.APPROVED ? 'green' : req.status === RequestStatus.PENDING ? 'yellow' : 'red'}>
-                    {req.status}
+                    {requestStatusLabel(req.status)}
                   </Badge>
                   {isAdmin && req.status === RequestStatus.PENDING && (
-                    <div className="flex gap-2">
-                      <button onClick={() => onStatusChange(req.id, RequestStatus.APPROVED)} className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 transition-colors hover:bg-emerald-100"><CheckCircle2 size={18} /></button>
-                      <button onClick={() => onStatusChange(req.id, RequestStatus.REJECTED)} className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 transition-colors hover:bg-rose-100"><X size={18} /></button>
+                    <div className="flex flex-col items-stretch sm:items-end gap-2 w-full sm:w-auto">
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          type="button"
+                          aria-label="Approve request"
+                          onClick={() => onStatusChange(req.id, RequestStatus.APPROVED)}
+                          className="min-h-11 min-w-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 transition-colors hover:bg-emerald-100 touch-manipulation active:scale-95"
+                        >
+                          <CheckCircle2 size={20} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Decline request"
+                          onClick={() => onStatusChange(req.id, RequestStatus.REJECTED)}
+                          className="min-h-11 min-w-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 transition-colors hover:bg-rose-100 touch-manipulation active:scale-95"
+                        >
+                          <X size={20} />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => onStatusChange(req.id, RequestStatus.APPROVED)}
+                          className="min-h-10 px-3 rounded-xl bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wide border border-emerald-700 shadow-sm hover:bg-emerald-700 touch-manipulation active:scale-[0.98]"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onStatusChange(req.id, RequestStatus.REJECTED)}
+                          className="min-h-10 px-3 rounded-xl bg-white text-rose-700 text-[10px] font-black uppercase tracking-wide border border-rose-200 hover:bg-rose-50 touch-manipulation active:scale-[0.98]"
+                        >
+                          Decline
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2738,7 +3278,12 @@ const RequestsView: React.FC<{
         {requests.length === 0 && (
           <div className="py-20 text-center bg-white rounded-3xl border border-slate-200">
             <Info className="mx-auto text-slate-200 mb-2" size={32} />
-            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Queue is currently empty</p>
+            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">No requests yet</p>
+          </div>
+        )}
+        {requests.length > 0 && filteredSorted.length === 0 && (
+          <div className="py-14 text-center bg-white rounded-3xl border border-dashed border-slate-200">
+            <p className="text-[11px] font-bold text-slate-500 px-4">Nothing matches these filters. Try &ldquo;All&rdquo; dates or a different status.</p>
           </div>
         )}
       </div>
@@ -2774,7 +3319,7 @@ const DoctorsView: React.FC<{
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Staffing</h1>
+        <h1 className="rs-h2 text-slate-900 tracking-tight">Staffing</h1>
         {isAdmin && !isAdding && (
           <Button onClick={() => setIsAdding(true)} variant="primary" className="h-10 px-4 text-xs">
             <Plus size={16} /> ADD DOCTOR

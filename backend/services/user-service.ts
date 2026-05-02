@@ -4,6 +4,7 @@ import { Database } from '../shared/database.js';
 import { authMiddleware, adminOnly, requireDepartment } from '../shared/auth.js';
 import { getPublishedYearRollupForDepartment, normalizeFairnessHistoryMode, type FairnessYearRollup } from '../shared/fairnessRollup.js';
 import { logger } from '../shared/logger.js';
+import { corsOrigin } from '../shared/corsOrigin.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -13,7 +14,7 @@ const PORT = process.env.USER_SERVICE_PORT || 4004;
 const db = Database.getInstance();
 const withDept = requireDepartment(() => db);
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
+app.use(cors({ origin: corsOrigin(), credentials: true }));
 app.use(express.json());
 
 // ── Health check ──────────────────────────────────────────────────────────────

@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>RosterSync — Design System</title>
+  <link rel="icon" type="image/svg+xml" href="logos/rostersync-favicon.svg">
+  <link rel="stylesheet" href="design-system/rostersync.css">
+  <style>
+    .ds-wrap { max-width: 1240px; margin: 0 auto; padding: 64px 40px 120px; }
+    .ds-hero { display:flex; justify-content:space-between; align-items:flex-end; gap:32px; margin-bottom:64px; flex-wrap:wrap; }
+    .ds-hero img { height: 56px; }
+    .ds-hero p { color: var(--rs-slate-500); max-width: 540px; margin: 16px 0 0; }
+    .ds-section { margin-top: 72px; }
+    .ds-section h2 { display:flex; align-items:baseline; gap:16px; margin: 0 0 28px; padding-bottom:14px; border-bottom: 1px solid var(--rs-slate-200); }
+    .ds-section h2 .num { font-family: var(--rs-font-mono); font-size:13px; font-weight:500; color: var(--rs-slate-500); }
+    .ds-grid { display: grid; gap: 16px; }
+    .ds-grid--2 { grid-template-columns: 1fr 1fr; }
+    .ds-grid--3 { grid-template-columns: repeat(3, 1fr); }
+    .ds-grid--4 { grid-template-columns: repeat(4, 1fr); }
+    .ds-grid--6 { grid-template-columns: repeat(6, 1fr); }
+    .ds-block { background: var(--rs-white); border:1px solid var(--rs-slate-200); border-radius: var(--rs-r-lg); padding:20px; }
+    .ds-color { display:flex; flex-direction:column; gap:6px; }
+    .ds-swatch { aspect-ratio: 1.6/1; border-radius: var(--rs-r-md); box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+    .ds-color .name { font-family: var(--rs-font-mono); font-size: 11px; color: var(--rs-ink); margin-top:4px; }
+    .ds-color .hex  { font-family: var(--rs-font-mono); font-size: 10px; color: var(--rs-slate-500); }
+    .ds-row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+    .ds-stack { display:flex; flex-direction:column; gap:12px; }
+
+    /* Type spec */
+    .ds-type-row { display:grid; grid-template-columns: 1fr 200px; gap:20px; align-items:baseline; padding: 18px 0; border-bottom:1px solid var(--rs-slate-200); }
+    .ds-type-row:last-child { border-bottom:0; }
+    .ds-type-row .meta { font-family: var(--rs-font-mono); font-size:11px; color: var(--rs-slate-500); }
+
+    /* Spacing scale */
+    .ds-sp-row { display:flex; align-items:center; gap:16px; padding:8px 0; }
+    .ds-sp-row .bar { background: var(--rs-purple-100); height:14px; border-radius:4px; }
+    .ds-sp-row .lbl { font-family: var(--rs-font-mono); font-size:12px; color: var(--rs-slate-700); width:80px; }
+    .ds-sp-row .px  { font-family: var(--rs-font-mono); font-size:11px; color: var(--rs-slate-500); }
+
+    /* Radius */
+    .ds-rad { aspect-ratio: 1.4/1; background: var(--rs-purple-100); display:grid; place-content:center; font-family: var(--rs-font-mono); font-size:12px; color: var(--rs-purple); }
+
+    /* Shadow */
+    .ds-shadow { aspect-ratio: 1.5/1; background: var(--rs-white); display:grid; place-content:center; border-radius: var(--rs-r-lg); font-family: var(--rs-font-mono); font-size:12px; color: var(--rs-slate-700); }
+
+    /* Component demo blocks */
+    .demo-row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:20px; background: var(--rs-paper); border-radius: var(--rs-r-md); border:1px dashed var(--rs-slate-200); }
+    .demo-label { font-family: var(--rs-font-mono); font-size:10px; color: var(--rs-slate-500); margin-bottom:8px; text-transform: uppercase; letter-spacing:.08em; }
+
+    /* Image system placeholder */
+    .ds-img-ph { aspect-ratio: 16/9; border-radius: var(--rs-r-lg); display:grid; place-content:center; color: var(--rs-slate-700); font-family: var(--rs-font-mono); font-size:12px; background-image: repeating-linear-gradient(-45deg, var(--rs-slate-200) 0 1px, transparent 1px 12px); background-color: var(--rs-slate-100); border:1px solid var(--rs-slate-200); }
+
+    .ds-token-table { width:100%; font-family: var(--rs-font-mono); font-size:12px; }
+    .ds-token-table td { padding:6px 12px; border-bottom:1px dashed var(--rs-slate-200); }
+    .ds-token-table td:first-child { color: var(--rs-purple); }
+
+    /* App preview */
+    .app-preview { background: var(--rs-paper); border:1px solid var(--rs-slate-200); border-radius: var(--rs-r-xl); overflow:hidden; display:grid; grid-template-columns: 240px 1fr; min-height: 520px; }
+    .app-preview .side { background: var(--rs-paper); border-right:1px solid var(--rs-slate-200); padding: 20px 12px; }
+    .app-preview .top  { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; border-bottom:1px solid var(--rs-slate-200); background:var(--rs-white); }
+    .app-preview .body { padding: 24px; }
+  </style>
+</head>
+<body>
+  <div class="ds-wrap">
+    <header class="ds-hero">
+      <div>
+        <img src="logos/rostersync-lockup-color.svg" alt="RosterSync">
+        <p class="rs-body-lg">A complete design language for RosterSync — colors, type, spacing, components, and motion. Drop <code class="rs-mono" style="background:var(--rs-purple-50);padding:2px 6px;border-radius:4px">design-system/rostersync.css</code> into any project to get the system.</p>
+      </div>
+      <div class="rs-row" style="display:flex;gap:8px">
+        <a class="rs-btn rs-btn--secondary rs-btn--sm" href="design-system/tokens.json" download>tokens.json</a>
+        <a class="rs-btn rs-btn--secondary rs-btn--sm" href="design-system/rostersync.css" download>rostersync.css</a>
+        <a class="rs-btn rs-btn--primary rs-btn--sm" href="design-system/llm-prompt.json" download>LLM prompt</a>
+      </div>
+    </header>
+
+    <!-- 01 COLOR -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">01</span> Color</h2>
+
+      <div class="demo-label">Brand</div>
+      <div class="ds-grid ds-grid--6">
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-purple)"></div><div class="name">purple</div><div class="hex">#5D41B9</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-purple-700)"></div><div class="name">purple-700</div><div class="hex">#4A32A0</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-purple-100)"></div><div class="name">purple-100</div><div class="hex">#EAE3FA</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-orange)"></div><div class="name">orange</div><div class="hex">#FF912A</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-orange-100)"></div><div class="name">orange-100</div><div class="hex">#FFE7CF</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-orange-50)"></div><div class="name">orange-50</div><div class="hex">#FFF4E6</div></div>
+      </div>
+
+      <div class="demo-label" style="margin-top:24px">Neutral</div>
+      <div class="ds-grid ds-grid--6">
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-ink)"></div><div class="name">ink</div><div class="hex">#1B1230</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-slate-700)"></div><div class="name">slate-700</div><div class="hex">#4A4360</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-slate-500)"></div><div class="name">slate-500</div><div class="hex">#6B6478</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-slate-200)"></div><div class="name">slate-200</div><div class="hex">#E8E2D8</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-slate-100)"></div><div class="name">slate-100</div><div class="hex">#F2EEE8</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-paper)"></div><div class="name">paper</div><div class="hex">#FAF8F5</div></div>
+      </div>
+
+      <div class="demo-label" style="margin-top:24px">Semantic</div>
+      <div class="ds-grid ds-grid--4">
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-success)"></div><div class="name">success</div><div class="hex">#1F9D67</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-warning)"></div><div class="name">warning</div><div class="hex">#D98B12</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-danger)"></div><div class="name">danger</div><div class="hex">#D6443B</div></div>
+        <div class="ds-color"><div class="ds-swatch" style="background:var(--rs-info)"></div><div class="name">info</div><div class="hex">#2C7AB8</div></div>
+      </div>
+    </section>
+
+    <!-- 02 TYPE -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">02</span> Typography</h2>
+      <div class="ds-block">
+        <div class="ds-type-row"><div class="rs-display-xl">Display XL</div><div class="meta">Bricolage 800 · 64/1.05 · -3%</div></div>
+        <div class="ds-type-row"><div class="rs-display-lg">Display LG</div><div class="meta">Bricolage 800 · 48/1.08 · -2.5%</div></div>
+        <div class="ds-type-row"><div class="rs-h1">Heading 1 — page titles</div><div class="meta">Bricolage 700 · 36/1.15</div></div>
+        <div class="ds-type-row"><div class="rs-h2">Heading 2 — sections</div><div class="meta">Bricolage 700 · 28/1.20</div></div>
+        <div class="ds-type-row"><div class="rs-h3">Heading 3 — card titles</div><div class="meta">Bricolage 700 · 22/1.25</div></div>
+        <div class="ds-type-row"><div class="rs-h4">Heading 4 — subheaders</div><div class="meta">Bricolage 600 · 18/1.30</div></div>
+        <div class="ds-type-row"><div class="rs-body-lg">Body large — lead paragraphs that need a little more weight to anchor a section.</div><div class="meta">Inter 400 · 17/1.55</div></div>
+        <div class="ds-type-row"><div class="rs-body">Body — the default. Most content lives here. Comfortable, readable, neutral.</div><div class="meta">Inter 400 · 15/1.55</div></div>
+        <div class="ds-type-row"><div class="rs-body-sm">Body small — secondary text, helper copy, table footnotes.</div><div class="meta">Inter 400 · 13/1.50</div></div>
+        <div class="ds-type-row"><div class="rs-label">Label — form labels and button text</div><div class="meta">Inter 500 · 13/1.40</div></div>
+        <div class="ds-type-row"><div class="rs-caption">Caption — meta text, timestamps, image credits</div><div class="meta">Inter 400 · 12/1.40</div></div>
+        <div class="ds-type-row"><div class="rs-overline">Overline — section eyebrows</div><div class="meta">Inter 600 · 11/1.30 · +12%</div></div>
+        <div class="ds-type-row"><div class="rs-mono">monoText_for-ids-and-codes</div><div class="meta">JetBrains Mono · 13/1.50</div></div>
+      </div>
+    </section>
+
+    <!-- 03 SPACING -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">03</span> Spacing &amp; Layout</h2>
+      <div class="ds-grid ds-grid--2">
+        <div class="ds-block">
+          <div class="demo-label">4-px scale</div>
+          <div class="ds-stack" style="gap:0">
+            <div class="ds-sp-row"><span class="lbl">--rs-s-1</span><span class="bar" style="width:4px"></span><span class="px">4px</span></div>
+            <div class="ds-sp-row"><span class="lbl">--rs-s-2</span><span class="bar" style="width:8px"></span><span class="px">8px</span></div>
+            <div class="ds-sp-row"><span class="lbl">--rs-s-3</span><span class="bar" style="width:12px"></span><span class="px">12px</span></div>
+            <div class="ds-sp-row"><span class="lbl">--rs-s-4</span><span class="bar" style="width:16px"></span><span class="px">16px</span></div>
+            <div class="ds-sp-row"><span class="lbl">--rs-s-6</span><span class="bar" style="width:24px"></span><span class="px">24px</span></div>
+            <div class="ds-sp-row"><span class="lbl">--rs-s-8</span><span class="bar" style="width:32px"></span><span class="px">32px</span></div>
+            <div class="ds-sp-row"><span class="lbl">--rs-s-12</span><span class="bar" style="width:48px"></span><span class="px">48px</span></div>
+            <div class="ds-sp-row"><span class="lbl">--rs-s-16</span><span class="bar" style="width:64px"></span><span class="px">64px</span></div>
+            <div class="ds-sp-row"><span class="lbl">--rs-s-24</span><span class="bar" style="width:96px"></span><span class="px">96px</span></div>
+          </div>
+        </div>
+        <div class="ds-block">
+          <div class="demo-label">Breakpoints</div>
+          <table class="ds-token-table">
+            <tr><td>sm</td><td>640px</td><td>tablet portrait</td></tr>
+            <tr><td>md</td><td>768px</td><td>tablet landscape</td></tr>
+            <tr><td>lg</td><td>1024px</td><td>laptop</td></tr>
+            <tr><td>xl</td><td>1280px</td><td>desktop</td></tr>
+            <tr><td>2xl</td><td>1536px</td><td>large desktop</td></tr>
+          </table>
+          <div class="demo-label" style="margin-top:24px">Container</div>
+          <table class="ds-token-table">
+            <tr><td>max-width</td><td>1240px</td></tr>
+            <tr><td>padding (mobile)</td><td>20px</td></tr>
+            <tr><td>padding (desktop)</td><td>40px</td></tr>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04 RADIUS + SHADOW -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">04</span> Radius &amp; Elevation</h2>
+      <div class="demo-label">Corner radius</div>
+      <div class="ds-grid ds-grid--6">
+        <div class="ds-rad" style="border-radius:var(--rs-r-sm)">sm 6</div>
+        <div class="ds-rad" style="border-radius:var(--rs-r-md)">md 10</div>
+        <div class="ds-rad" style="border-radius:var(--rs-r-lg)">lg 14</div>
+        <div class="ds-rad" style="border-radius:var(--rs-r-xl)">xl 18</div>
+        <div class="ds-rad" style="border-radius:var(--rs-r-2xl)">2xl 24</div>
+        <div class="ds-rad" style="border-radius:var(--rs-r-pill)">pill</div>
+      </div>
+      <div class="demo-label" style="margin-top:24px">Shadow / elevation</div>
+      <div class="ds-grid ds-grid--5" style="grid-template-columns:repeat(5,1fr); padding: 20px; background: var(--rs-paper); border-radius: var(--rs-r-md);">
+        <div class="ds-shadow" style="box-shadow:var(--rs-shadow-xs)">xs</div>
+        <div class="ds-shadow" style="box-shadow:var(--rs-shadow-sm)">sm</div>
+        <div class="ds-shadow" style="box-shadow:var(--rs-shadow-md)">md</div>
+        <div class="ds-shadow" style="box-shadow:var(--rs-shadow-lg)">lg</div>
+        <div class="ds-shadow" style="box-shadow:var(--rs-shadow-xl)">xl</div>
+      </div>
+    </section>
+
+    <!-- 05 BUTTONS -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">05</span> Buttons</h2>
+      <div class="ds-stack" style="gap:20px">
+        <div>
+          <div class="demo-label">Variants — md</div>
+          <div class="demo-row">
+            <button class="rs-btn rs-btn--primary">Primary</button>
+            <button class="rs-btn rs-btn--secondary">Secondary</button>
+            <button class="rs-btn rs-btn--ghost">Ghost</button>
+            <button class="rs-btn rs-btn--accent">Accent</button>
+            <button class="rs-btn rs-btn--danger">Delete</button>
+            <button class="rs-btn rs-btn--primary" disabled>Disabled</button>
+          </div>
+        </div>
+        <div>
+          <div class="demo-label">Sizes</div>
+          <div class="demo-row">
+            <button class="rs-btn rs-btn--primary rs-btn--sm">Small</button>
+            <button class="rs-btn rs-btn--primary">Medium</button>
+            <button class="rs-btn rs-btn--primary rs-btn--lg">Large</button>
+          </div>
+        </div>
+        <div>
+          <div class="demo-label">With icons</div>
+          <div class="demo-row">
+            <button class="rs-btn rs-btn--primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Add shift</button>
+            <button class="rs-btn rs-btn--secondary">Export<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l10-10M7 7h10v10"/></svg></button>
+            <button class="rs-btn rs-btn--icon rs-btn--secondary"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 06 FORMS -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">06</span> Forms &amp; Inputs</h2>
+      <div class="ds-grid ds-grid--2">
+        <div class="ds-block">
+          <div class="ds-stack" style="gap:16px">
+            <label class="rs-field">
+              <span class="rs-label">Doctor</span>
+              <input class="rs-input" placeholder="Search by name or specialty…" value="Dr. Aisha Mohammed">
+            </label>
+            <label class="rs-field">
+              <span class="rs-label">Shift type</span>
+              <select class="rs-select">
+                <option>On-call</option><option>Day shift</option><option>Night shift</option>
+              </select>
+            </label>
+            <label class="rs-field">
+              <span class="rs-label">Notes</span>
+              <textarea class="rs-textarea" placeholder="Any context for the scheduler…"></textarea>
+            </label>
+            <label class="rs-field">
+              <span class="rs-label">Hospital</span>
+              <input class="rs-input is-error" value="—">
+              <span class="rs-error-text">Hospital is required.</span>
+            </label>
+          </div>
+        </div>
+        <div class="ds-block">
+          <div class="demo-label">Toggles</div>
+          <div class="ds-stack" style="gap:14px; padding-top:8px">
+            <label style="display:flex;gap:10px;align-items:center"><input class="rs-checkbox" type="checkbox" checked><span class="rs-body">Notify on schedule change</span></label>
+            <label style="display:flex;gap:10px;align-items:center"><input class="rs-checkbox" type="checkbox"><span class="rs-body">Auto-publish weekly</span></label>
+            <label style="display:flex;gap:10px;align-items:center"><input class="rs-radio" type="radio" name="r" checked><span class="rs-body">Highest priority first</span></label>
+            <label style="display:flex;gap:10px;align-items:center"><input class="rs-radio" type="radio" name="r"><span class="rs-body">Round-robin</span></label>
+            <label style="display:flex;gap:12px;align-items:center"><button class="rs-switch" aria-checked="true"></button><span class="rs-body">Show holiday hours</span></label>
+            <label style="display:flex;gap:12px;align-items:center"><button class="rs-switch" aria-checked="false"></button><span class="rs-body">Send Slack digest</span></label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 PILLS BADGES -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">07</span> Pills, Tags &amp; Badges</h2>
+      <div class="demo-row">
+        <span class="rs-pill rs-pill--neutral">Neutral</span>
+        <span class="rs-pill rs-pill--brand">Brand</span>
+        <span class="rs-pill rs-pill--accent">Accent</span>
+        <span class="rs-pill rs-pill--success">Highest priority</span>
+        <span class="rs-pill rs-pill--warning">Pending</span>
+        <span class="rs-pill rs-pill--danger">Conflict</span>
+        <span class="rs-pill rs-pill--info">In rotation</span>
+      </div>
+      <div class="demo-row" style="margin-top:12px">
+        <span class="rs-tag">cardiology</span>
+        <span class="rs-tag">night-eligible</span>
+        <span class="rs-tag">St. Mary's</span>
+        <span class="rs-tag">on-call</span>
+      </div>
+    </section>
+
+    <!-- 08 CARDS -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">08</span> Cards</h2>
+      <div class="ds-grid ds-grid--3">
+        <div class="rs-card">
+          <div class="rs-overline" style="margin-bottom:8px">This week</div>
+          <div class="rs-h2" style="margin:0 0 4px">42 shifts</div>
+          <div class="rs-body-sm">Across 6 departments</div>
+        </div>
+        <div class="rs-card rs-card--interactive">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+            <div>
+              <div class="rs-h3" style="margin:0">Dr. Aisha Mohammed</div>
+              <div class="rs-body-sm">Cardiology · St. Mary's</div>
+            </div>
+            <span class="rs-pill rs-pill--success">Highest priority</span>
+          </div>
+          <hr class="rs-divider">
+          <div class="rs-row" style="display:flex;justify-content:space-between">
+            <div><div class="rs-caption">This month</div><div class="rs-h4">0 shifts</div></div>
+            <div><div class="rs-caption">Holiday hrs</div><div class="rs-h4">0</div></div>
+          </div>
+        </div>
+        <div class="rs-card rs-card--elevated" style="background:var(--rs-purple);color:white">
+          <div class="rs-overline" style="color:rgba(255,255,255,.7);margin-bottom:8px">Sync status</div>
+          <div class="rs-h2" style="margin:0 0 6px;color:white">All published</div>
+          <div style="opacity:.85;font-size:14px">Last synced 2 minutes ago</div>
+          <div style="margin-top:16px"><button class="rs-btn rs-btn--accent rs-btn--sm">View roster</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 09 AVATARS -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">09</span> Avatars</h2>
+      <div class="demo-row">
+        <span class="rs-avatar rs-avatar--sm">AM</span>
+        <span class="rs-avatar">KA</span>
+        <span class="rs-avatar rs-avatar--lg">LF</span>
+        <div class="rs-avatar-stack">
+          <span class="rs-avatar">AM</span><span class="rs-avatar" style="background:var(--rs-orange-100);color:#9C4F0E">KA</span><span class="rs-avatar">LF</span><span class="rs-avatar" style="background:var(--rs-success-bg);color:var(--rs-success)">PN</span>
+          <span class="rs-avatar" style="background:var(--rs-slate-100);color:var(--rs-slate-700)">+6</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10 TABLE -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">10</span> Table</h2>
+      <div class="rs-card" style="padding:0;overflow:hidden">
+        <table class="rs-table">
+          <thead><tr><th>Doctor</th><th>This month</th><th>History (hrs)</th><th>Standing</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Dr. Aisha Mohammed</strong></td><td>0 shifts (0 hrs)</td><td>0 hrs</td><td><span class="rs-pill rs-pill--success">Highest priority</span></td></tr>
+            <tr><td><strong>Dr. Kwame Asante</strong></td><td>0 shifts (0 hrs)</td><td>0 hrs</td><td><span class="rs-pill rs-pill--success">Highest priority</span></td></tr>
+            <tr class="is-selected"><td><strong>Dr. Fatima Essop</strong></td><td>1 shift (16 hrs)</td><td>32 hrs</td><td><span class="rs-pill rs-pill--info">In rotation</span></td></tr>
+            <tr><td><strong>Dr. Sipho Dlamini</strong></td><td>0 shifts (0 hrs)</td><td>80 hrs</td><td><span class="rs-pill rs-pill--info">In rotation</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 11 ALERTS -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">11</span> Alerts</h2>
+      <div class="ds-stack">
+        <div class="rs-alert rs-alert--info"><strong>FYI:</strong>&nbsp;<span class="rs-alert-body">November roster goes live in 3 days.</span></div>
+        <div class="rs-alert rs-alert--success"><strong>Published.</strong>&nbsp;<span class="rs-alert-body">All 42 shifts have been notified to staff.</span></div>
+        <div class="rs-alert rs-alert--warning"><strong>Heads up:</strong>&nbsp;<span class="rs-alert-body">Dr. Naidoo is approaching the 60h/week cap.</span></div>
+        <div class="rs-alert rs-alert--danger"><strong>Conflict.</strong>&nbsp;<span class="rs-alert-body">Two doctors assigned to the same on-call slot.</span></div>
+      </div>
+    </section>
+
+    <!-- 12 TABS / NAV -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">12</span> Tabs &amp; Navigation</h2>
+      <div class="demo-row" style="background:var(--rs-white)">
+        <div class="rs-tabs">
+          <button class="rs-tab" aria-selected="true">This week</button>
+          <button class="rs-tab">Next week</button>
+          <button class="rs-tab">Month view</button>
+          <button class="rs-tab">History</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 13 IMAGERY -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">13</span> Imagery &amp; Placeholders</h2>
+      <div class="ds-grid ds-grid--3">
+        <div class="ds-img-ph">photography · 16:9</div>
+        <div class="ds-img-ph" style="aspect-ratio:1/1">avatar · 1:1</div>
+        <div class="ds-img-ph" style="aspect-ratio:4/3">card thumb · 4:3</div>
+      </div>
+      <p class="rs-body-sm" style="margin-top:12px">Use real clinician photography — candid, natural light, neutral backgrounds. For illustrations: flat 2-color (purple + orange) on paper. Never auto-generate fake portraits.</p>
+    </section>
+
+    <!-- 14 APP PREVIEW -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">14</span> Putting it together</h2>
+      <div class="app-preview">
+        <aside class="side">
+          <img src="logos/rostersync-lockup-color.svg" alt="" style="height:24px;margin:6px 0 16px">
+          <div class="rs-overline" style="padding:8px 14px;color:var(--rs-slate-500)">Workspace</div>
+          <div class="rs-side-item is-active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>Roster</div>
+          <div class="rs-side-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Doctors</div>
+          <div class="rs-side-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>Reports</div>
+          <div class="rs-side-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</div>
+        </aside>
+        <main>
+          <header class="top">
+            <div>
+              <div class="rs-overline">November 2025</div>
+              <div class="rs-h2" style="margin:0">On-call roster</div>
+            </div>
+            <div class="ds-row">
+              <div class="rs-tabs"><button class="rs-tab" aria-selected="true">Week</button><button class="rs-tab">Month</button></div>
+              <button class="rs-btn rs-btn--secondary rs-btn--sm">Export</button>
+              <button class="rs-btn rs-btn--primary rs-btn--sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add shift</button>
+            </div>
+          </header>
+          <div class="body">
+            <div class="rs-alert rs-alert--info" style="margin-bottom:20px"><span class="rs-alert-body">Public-holiday on-call hours add up from every <strong>published</strong> month. The scheduler leans toward those with fewer holiday hours so far.</span></div>
+            <div class="rs-card" style="padding:0">
+              <table class="rs-table">
+                <thead><tr><th>Doctor</th><th>This month</th><th>History (hrs)</th><th>Standing</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Dr. Aisha Mohammed</strong></td><td>0 shifts (0 hrs)</td><td>0 hrs</td><td><span class="rs-pill rs-pill--success">Highest priority</span></td></tr>
+                  <tr><td><strong>Dr. Luca Ferreira</strong></td><td>0 shifts (0 hrs)</td><td>0 hrs</td><td><span class="rs-pill rs-pill--success">Highest priority</span></td></tr>
+                  <tr><td><strong>Dr. Naledi Sithole</strong></td><td>0 shifts (0 hrs)</td><td>16 hrs</td><td><span class="rs-pill rs-pill--info">In rotation</span></td></tr>
+                  <tr class="is-selected"><td><strong>Dr. Fatima Essop</strong></td><td>1 shift (16 hrs)</td><td>32 hrs</td><td><span class="rs-pill rs-pill--info">In rotation</span></td></tr>
+                  <tr><td><strong>Dr. Tendai Moyo</strong></td><td>0 shifts (0 hrs)</td><td>96 hrs</td><td><span class="rs-pill rs-pill--info">In rotation</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <!-- 15 DO/DONT -->
+    <section class="ds-section">
+      <h2 class="rs-h2"><span class="num">15</span> Don'ts</h2>
+      <ul class="rs-body" style="line-height:1.8;color:var(--rs-slate-700)">
+        <li>Don't blend purple and orange into a gradient — keep them adjacent, not mixed.</li>
+        <li>Don't reuse the sync-circle from the logo as a generic refresh icon.</li>
+        <li>Don't combine more than two background tints on a single screen.</li>
+        <li>Don't use pure black or pure white for body text — use <code class="rs-mono">ink</code> and <code class="rs-mono">paper</code>.</li>
+        <li>Don't stack shadow + border + tint on the same element.</li>
+        <li>Don't use Bricolage Grotesque below 18px — switch to Inter.</li>
+      </ul>
+    </section>
+  </div>
+</body>
+</html>

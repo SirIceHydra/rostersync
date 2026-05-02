@@ -1,22 +1,31 @@
 import React from 'react';
 
-export const Button: React.FC<{ 
-  children: React.ReactNode; 
-  onClick?: () => void; 
-  variant?: 'primary' | 'secondary' | 'danger' | 'success';
+const variantClass: Record<'primary' | 'secondary' | 'danger' | 'success' | 'ghost' | 'accent', string> = {
+  primary: 'rs-btn rs-btn--primary',
+  secondary: 'rs-btn rs-btn--secondary',
+  danger: 'rs-btn rs-btn--danger',
+  success: 'rs-btn rs-btn--success',
+  ghost: 'rs-btn rs-btn--ghost',
+  accent: 'rs-btn rs-btn--accent',
+};
+
+export const Button: React.FC<{
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'ghost' | 'accent';
   className?: string;
   disabled?: boolean;
   type?: 'button' | 'submit' | 'reset';
-}> = ({ children, onClick, variant = 'primary', className = "", disabled, type = 'button' }) => {
-  const base = "px-5 py-2.5 rounded-full font-extrabold transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 text-sm tracking-wide";
-  const variants = {
-    primary: 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm',
-    secondary: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
-    danger: 'bg-rose-500 text-white hover:bg-rose-600',
-    success: 'bg-emerald-600 text-white hover:bg-emerald-700',
-  };
+  title?: string;
+}> = ({ children, onClick, variant = 'primary', className = '', disabled, type = 'button', title }) => {
   return (
-    <button disabled={disabled} onClick={onClick} type={type} className={`${base} ${variants[variant]} ${className}`}>
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      type={type}
+      title={title}
+      className={`${variantClass[variant]} active:scale-[0.98] ${className}`.trim()}
+    >
       {children}
     </button>
   );

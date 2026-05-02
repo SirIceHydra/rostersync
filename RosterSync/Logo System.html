@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>RosterSync — Logo System</title>
+  <link rel="icon" type="image/svg+xml" href="logos/rostersync-favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --orange:#FF912A;
+      --purple:#5D41B9;
+      --ink:#1B1230;
+      --paper:#FAF8F5;
+      --line:#E8E2D8;
+      --muted:#6B6478;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{
+      font-family:'Inter',system-ui,sans-serif;
+      background:var(--paper);
+      color:var(--ink);
+      -webkit-font-smoothing:antialiased;
+    }
+    .wrap{max-width:1240px;margin:0 auto;padding:64px 40px 120px}
+    header{margin-bottom:56px;display:flex;justify-content:space-between;align-items:flex-end;gap:32px;flex-wrap:wrap}
+    h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:56px;letter-spacing:-2px;margin:0 0 12px;color:var(--purple)}
+    h1 .dot{color:var(--orange)}
+    .lede{font-size:17px;color:var(--muted);max-width:520px;line-height:1.55;margin:0}
+    .swatches{display:flex;gap:12px}
+    .swatch{display:flex;flex-direction:column;align-items:center;gap:8px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted)}
+    .swatch .chip{width:56px;height:56px;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
+
+    h2{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:48px 0 20px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+
+    .grid{display:grid;gap:20px}
+    .grid.lockups{grid-template-columns:1fr 1fr}
+    .grid.icons{grid-template-columns:repeat(5,1fr)}
+    .grid.wordmarks{grid-template-columns:1fr 1fr}
+    .grid.favicons{grid-template-columns:repeat(4,1fr)}
+    .grid.marks{grid-template-columns:repeat(3,1fr)}
+
+    .card{
+      background:#fff;border:1px solid var(--line);border-radius:18px;
+      overflow:hidden;display:flex;flex-direction:column;
+    }
+    .card.dark{background:var(--ink)}
+    .card.black{background:#000}
+    .preview{
+      flex:1;display:flex;align-items:center;justify-content:center;
+      padding:36px 28px;min-height:160px;
+    }
+    .grid.icons .preview, .grid.favicons .preview{padding:24px}
+    .grid.icons .preview img, .grid.favicons .preview img{width:88px;height:88px}
+    .grid.lockups .preview img{width:100%;max-width:380px;height:auto}
+    .grid.wordmarks .preview img{width:100%;max-width:320px;height:auto}
+    .grid.marks .preview img{width:84px;height:84px}
+
+    .meta{
+      padding:14px 18px;border-top:1px solid var(--line);
+      display:flex;justify-content:space-between;align-items:center;gap:8px;
+      font-size:12px;color:var(--muted);background:#fff;
+    }
+    .meta .name{font-family:'JetBrains Mono',monospace;color:var(--ink);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .meta .links{display:flex;gap:8px;flex-shrink:0}
+    .meta a{
+      font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.5px;
+      text-decoration:none;color:var(--purple);
+      padding:5px 9px;border-radius:6px;background:rgba(93,65,185,.08);
+      transition:background .15s;
+    }
+    .meta a:hover{background:rgba(93,65,185,.18)}
+
+    .applications{margin-top:56px}
+    .app-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
+    .app{
+      border-radius:18px;overflow:hidden;border:1px solid var(--line);
+      aspect-ratio:1.4/1;display:flex;align-items:center;justify-content:center;
+      padding:32px;position:relative;
+    }
+    .app.tile-orange{background:var(--orange)}
+    .app.tile-dark{background:var(--ink)}
+    .app.tile-paper{background:#fff}
+    .app img{max-width:80%;max-height:60%}
+    .app .label{
+      position:absolute;top:12px;left:14px;font-family:'JetBrains Mono',monospace;
+      font-size:10px;letter-spacing:.5px;color:rgba(255,255,255,.7);
+    }
+    .app.tile-paper .label{color:var(--muted)}
+
+    .download-all{
+      display:inline-flex;align-items:center;gap:10px;
+      background:var(--purple);color:#fff;border:none;
+      padding:14px 22px;border-radius:12px;
+      font-family:'Bricolage Grotesque',sans-serif;font-weight:600;font-size:15px;
+      cursor:pointer;text-decoration:none;
+      transition:transform .12s, background .15s;
+    }
+    .download-all:hover{background:#4a32a0;transform:translateY(-1px)}
+    .download-all .arrow{font-weight:700}
+
+    .footer-note{
+      margin-top:80px;padding-top:32px;border-top:1px solid var(--line);
+      font-size:13px;color:var(--muted);line-height:1.6;
+    }
+    code{font-family:'JetBrains Mono',monospace;background:rgba(93,65,185,.08);padding:2px 6px;border-radius:4px;color:var(--purple)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>rostersync<span class="dot">.</span></h1>
+        <p class="lede">Brand mark, wordmarks, lockups, favicons and icon variants. SVG &amp; PNG, all colorways.</p>
+      </div>
+      <div class="swatches">
+        <div class="swatch"><div class="chip" style="background:#FF912A"></div>#FF912A</div>
+        <div class="swatch"><div class="chip" style="background:#5D41B9"></div>#5D41B9</div>
+        <div class="swatch"><div class="chip" style="background:#1B1230"></div>#1B1230</div>
+        <div class="swatch"><div class="chip" style="background:#FAF8F5;box-shadow:inset 0 0 0 1px var(--line)"></div>#FAF8F5</div>
+      </div>
+    </header>
+
+    <h2>Primary lockup</h2>
+    <div class="grid lockups">
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-lockup-color.svg" alt=""></div>
+        <div class="meta">
+          <span class="name">rostersync-lockup-color</span>
+          <span class="links"><a href="logos/rostersync-lockup-color.svg" download>SVG</a><a href="logos/png/rostersync-lockup-color-2000x440.png" download>PNG</a></span>
+        </div>
+      </div>
+      <div class="card dark">
+        <div class="preview"><img src="logos/rostersync-lockup-mono-light.svg" alt=""></div>
+        <div class="meta">
+          <span class="name">rostersync-lockup-mono-light</span>
+          <span class="links"><a href="logos/rostersync-lockup-mono-light.svg" download>SVG</a><a href="logos/png/rostersync-lockup-mono-light-2000x440.png" download>PNG</a></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-lockup-mono-dark.svg" alt=""></div>
+        <div class="meta">
+          <span class="name">rostersync-lockup-mono-dark</span>
+          <span class="links"><a href="logos/rostersync-lockup-mono-dark.svg" download>SVG</a><a href="logos/png/rostersync-lockup-mono-dark-2000x440.png" download>PNG</a></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-lockup-black.svg" alt=""></div>
+        <div class="meta">
+          <span class="name">rostersync-lockup-black</span>
+          <span class="links"><a href="logos/rostersync-lockup-black.svg" download>SVG</a><a href="logos/png/rostersync-lockup-black-2000x440.png" download>PNG</a></span>
+        </div>
+      </div>
+      <div class="card black" style="grid-column:1 / -1">
+        <div class="preview"><img src="logos/rostersync-lockup-white.svg" alt=""></div>
+        <div class="meta">
+          <span class="name">rostersync-lockup-white (reverse)</span>
+          <span class="links"><a href="logos/rostersync-lockup-white.svg" download>SVG</a><a href="logos/png/rostersync-lockup-white-2000x440.png" download>PNG</a></span>
+        </div>
+      </div>
+    </div>
+
+    <h2>Icon — disc</h2>
+    <div class="grid icons">
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-icon-color.svg" alt=""></div>
+        <div class="meta"><span class="name">color</span><span class="links"><a href="logos/rostersync-icon-color.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-icon-mono-dark.svg" alt=""></div>
+        <div class="meta"><span class="name">mono-dark</span><span class="links"><a href="logos/rostersync-icon-mono-dark.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card dark">
+        <div class="preview"><img src="logos/rostersync-icon-mono-light.svg" alt=""></div>
+        <div class="meta"><span class="name">mono-light</span><span class="links"><a href="logos/rostersync-icon-mono-light.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-icon-black.svg" alt=""></div>
+        <div class="meta"><span class="name">black</span><span class="links"><a href="logos/rostersync-icon-black.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card black">
+        <div class="preview"><img src="logos/rostersync-icon-white.svg" alt=""></div>
+        <div class="meta"><span class="name">white</span><span class="links"><a href="logos/rostersync-icon-white.svg" download>SVG</a></span></div>
+      </div>
+    </div>
+
+    <h2>Mark — no disc (for placement on color tiles, letterhead, etc)</h2>
+    <div class="grid marks">
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-mark-purple.svg" alt=""></div>
+        <div class="meta"><span class="name">mark-purple</span><span class="links"><a href="logos/rostersync-mark-purple.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-mark-orange.svg" alt=""></div>
+        <div class="meta"><span class="name">mark-orange</span><span class="links"><a href="logos/rostersync-mark-orange.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-mark-black.svg" alt=""></div>
+        <div class="meta"><span class="name">mark-black</span><span class="links"><a href="logos/rostersync-mark-black.svg" download>SVG</a></span></div>
+      </div>
+    </div>
+
+    <h2>Wordmark only</h2>
+    <div class="grid wordmarks">
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-wordmark-color.svg" alt=""></div>
+        <div class="meta"><span class="name">wordmark-color</span><span class="links"><a href="logos/rostersync-wordmark-color.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card dark">
+        <div class="preview"><img src="logos/rostersync-wordmark-mono-light.svg" alt=""></div>
+        <div class="meta"><span class="name">wordmark-mono-light</span><span class="links"><a href="logos/rostersync-wordmark-mono-light.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-wordmark-mono-dark.svg" alt=""></div>
+        <div class="meta"><span class="name">wordmark-mono-dark</span><span class="links"><a href="logos/rostersync-wordmark-mono-dark.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-wordmark-black.svg" alt=""></div>
+        <div class="meta"><span class="name">wordmark-black</span><span class="links"><a href="logos/rostersync-wordmark-black.svg" download>SVG</a></span></div>
+      </div>
+    </div>
+
+    <h2>Favicon</h2>
+    <div class="grid favicons">
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-favicon.svg" alt=""></div>
+        <div class="meta"><span class="name">favicon (orange)</span><span class="links"><a href="logos/rostersync-favicon.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-favicon-mono-dark.svg" alt=""></div>
+        <div class="meta"><span class="name">favicon-dark</span><span class="links"><a href="logos/rostersync-favicon-mono-dark.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-favicon-black.svg" alt=""></div>
+        <div class="meta"><span class="name">favicon-black</span><span class="links"><a href="logos/rostersync-favicon-black.svg" download>SVG</a></span></div>
+      </div>
+      <div class="card">
+        <div class="preview"><img src="logos/rostersync-favicon-white.svg" alt=""></div>
+        <div class="meta"><span class="name">favicon-white</span><span class="links"><a href="logos/rostersync-favicon-white.svg" download>SVG</a></span></div>
+      </div>
+    </div>
+
+    <h2>In context</h2>
+    <div class="app-row">
+      <div class="app tile-paper"><span class="label">light surface</span><img src="logos/rostersync-lockup-color.svg" alt=""></div>
+      <div class="app tile-dark"><span class="label">dark surface</span><img src="logos/rostersync-lockup-mono-light.svg" alt=""></div>
+      <div class="app tile-orange"><span class="label">brand surface</span><img src="logos/rostersync-lockup-white.svg" alt=""></div>
+    </div>
+
+    <div class="footer-note">
+      <p><strong>Type:</strong> <code>Bricolage Grotesque 800</code> · <strong>Colors:</strong> Orange <code>#FF912A</code>, Purple <code>#5D41B9</code> · <strong>Usage:</strong> minimum clear space = height of the disc on all sides; minimum mark size 24px digital, 12mm print. Don't recolor the mark or stretch the lockup.</p>
+    </div>
+  </div>
+</body>
+</html>

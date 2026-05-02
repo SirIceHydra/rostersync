@@ -6,6 +6,7 @@ import { RosterEngine } from '../shared/rosterEngine.js';
 import { getSAPublicHolidays } from '../shared/publicHolidays.js';
 import { getPublishedYearRollupForDepartment, normalizeFairnessHistoryMode } from '../shared/fairnessRollup.js';
 import { logger } from '../shared/logger.js';
+import { corsOrigin } from '../shared/corsOrigin.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -15,7 +16,7 @@ const PORT = process.env.ROSTER_SERVICE_PORT || 4002;
 const db = Database.getInstance();
 const withDept = requireDepartment(() => db);
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
+app.use(cors({ origin: corsOrigin(), credentials: true }));
 app.use(express.json());
 
 // ── Health check ──────────────────────────────────────────────────────────────
@@ -25,6 +26,49 @@ app.get('/health', async (_req, res) => {
 });
 
 // ── SA public holidays ────────────────────────────────────────────────────────
+/** Rolling calendar months of roster metadata for archive UI (no new tables — uses `rosters`). */
+app.get('/api/rosters/archive', authMiddleware, withDept, async (req, res) => {
+  try {
+    const departmentId = (req as any).departmentId;
+    const role = String((req as any).user?.role ?? '');
+    const months = Math.min(24, Math.max(1, parseInt(String(req.query.months ?? '6'), 10) || 6));
+    const now = new Date();
+    const slots: { year: number; month: number }[] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      slots.push({ year: d.getFullYear(), month: d.getMonth() });
+    }
+
+    const entries = [];
+    for (const { year, month } of slots) {
+      const row = await db.get(
+        'SELECT id, status, updated_at FROM rosters WHERE department_id = ? AND year = ? AND month = ?',
+        [departmentId, year, month]
+      );
+      if (!row) {
+        entries.push({ year, month, rosterId: null, status: null, updatedAt: null });
+        continue;
+      }
+      const isAdmin = role === 'ADMIN';
+      if (row.status === 'DRAFT' && !isAdmin) {
+        entries.push({ year, month, rosterId: null, status: null, updatedAt: null, hint: 'draft' });
+        continue;
+      }
+      entries.push({
+        year,
+        month,
+        rosterId: row.id,
+        status: row.status,
+        updatedAt: row.updated_at,
+      });
+    }
+    res.json({ entries });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Roster archive index error');
+    res.status(500).json({ error: 'Failed to list roster archive' });
+  }
+});
+
 app.get('/api/rosters/public-holidays/:year', authMiddleware, (req, res) => {
   try {
     const year = parseInt(req.params.year, 10);
@@ -144,15 +188,17 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
     const nowTs = Date.now();
 
     const existing = await db.get(
-      `SELECT id FROM rosters WHERE (department_id = ? AND year = ? AND month = ?) OR id = ?`,
+      `SELECT id, status FROM rosters WHERE (department_id = ? AND year = ? AND month = ?) OR id = ?`,
       [departmentId, targetYear, targetMonth, tentativeRosterId]
-    ) as { id: string } | undefined;
+    ) as { id: string; status: string } | undefined;
 
     const rosterId = existing?.id ?? tentativeRosterId;
+    /** Keep published rosters published after regenerate so doctors still see them; admins should re-sync cumulatives if totals change materially. */
+    const persistStatus = existing?.status === 'FINAL' ? 'FINAL' : roster.status;
 
     if (existing) {
       await db.run('UPDATE rosters SET department_id = ?, status = ?, updated_at = ? WHERE id = ?',
-        [departmentId, roster.status, nowTs, rosterId]);
+        [departmentId, persistStatus, nowTs, rosterId]);
       await db.run('DELETE FROM shifts WHERE roster_id = ?', [rosterId]);
     } else {
       await db.run(
@@ -168,7 +214,17 @@ app.post('/api/rosters/generate', authMiddleware, withDept, adminOnly, async (re
       );
     }
 
-    res.json({ roster, report });
+    // Engine uses placeholder ids (`roster-${y}-${m}`, `s-${date}`); DB uses `roster-${dept}-${y}-${m}` and `${rosterId}-${date}`.
+    const rosterOut = {
+      ...roster,
+      id: rosterId,
+      status: persistStatus as typeof roster.status,
+      shifts: roster.shifts.map((s) => ({
+        ...s,
+        id: `${rosterId}-${s.date}`,
+      })),
+    };
+    res.json({ roster: rosterOut, report });
   } catch (error: any) {
     logger.error({ err: error }, 'Generate roster error');
     res.status(500).json({ error: 'Failed to generate roster', details: error.message });

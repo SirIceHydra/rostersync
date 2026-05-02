@@ -3,6 +3,7 @@ import cors from 'cors';
 import { Database } from '../shared/database.js';
 import { authMiddleware, adminOnly, requireDepartment } from '../shared/auth.js';
 import { logger } from '../shared/logger.js';
+import { corsOrigin } from '../shared/corsOrigin.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -12,7 +13,7 @@ const PORT = process.env.REQUEST_SERVICE_PORT || 4003;
 const db = Database.getInstance();
 const withDept = requireDepartment(() => db);
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
+app.use(cors({ origin: corsOrigin(), credentials: true }));
 app.use(express.json());
 
 // ── Health check ──────────────────────────────────────────────────────────────
@@ -21,16 +22,50 @@ app.get('/health', async (_req, res) => {
   res.status(dbOk ? 200 : 503).json({ status: dbOk ? 'ok' : 'degraded', service: 'request' });
 });
 
-// ── Get all requests for current department ───────────────────────────────────
+// ── Approved schedule (no reasons) — for roster/transparency while keeping leave notes private ──
+app.get('/api/requests/approved-schedule', authMiddleware, withDept, async (req, res) => {
+  try {
+    const departmentId = (req as any).departmentId;
+    const start = String(req.query.start ?? '').trim();
+    const end = String(req.query.end ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      return res.status(400).json({ error: 'Query params start and end are required (YYYY-MM-DD)' });
+    }
+    const rows = await db.all(
+      `SELECT date, type, doctor_id
+       FROM requests
+       WHERE department_id = ? AND status = 'APPROVED' AND date >= ? AND date <= ?
+       ORDER BY date ASC, doctor_id ASC`,
+      [departmentId, start, end]
+    );
+    res.json({
+      entries: rows.map((r: any) => ({
+        date: r.date,
+        type: r.type,
+        doctorId: r.doctor_id,
+      })),
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Approved schedule error');
+    res.status(500).json({ error: 'Failed to fetch approved schedule' });
+  }
+});
+
+// ── List requests: admins see the department queue; doctors only see their own ──
 app.get('/api/requests', authMiddleware, withDept, async (req, res) => {
   try {
     const departmentId = (req as any).departmentId;
-    const requests = await db.all(
-      `SELECT id, doctor_id, type, date, status, reason, swap_with_doctor_id, created_at
-       FROM requests WHERE department_id = ?
-       ORDER BY created_at DESC`,
-      [departmentId]
-    );
+    const user = (req as any).user as { userId?: string; role?: string };
+    const isAdmin = user?.role === 'ADMIN';
+    const sql = isAdmin
+      ? `SELECT id, doctor_id, type, date, status, reason, swap_with_doctor_id, created_at
+         FROM requests WHERE department_id = ?
+         ORDER BY created_at DESC`
+      : `SELECT id, doctor_id, type, date, status, reason, swap_with_doctor_id, created_at
+         FROM requests WHERE department_id = ? AND doctor_id = ?
+         ORDER BY created_at DESC`;
+    const params = isAdmin ? [departmentId] : [departmentId, user.userId];
+    const requests = await db.all(sql, params);
     res.json(requests.map(r => ({
       id: r.id, doctorId: r.doctor_id, type: r.type, date: r.date,
       status: r.status, reason: r.reason,

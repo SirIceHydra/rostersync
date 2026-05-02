@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="RosterSync icon">
+  <circle cx="100" cy="100" r="92" fill="#FF912A"></circle>
+  <g fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="46" y1="46" x2="56" y2="46"></line>
+    <line x1="78" y1="46" x2="88" y2="46"></line>
+    <path d="M 51 50 C 51 80, 56 100, 67 110"></path>
+    <path d="M 83 50 C 83 80, 78 100, 67 110"></path>
+    <path d="M 67 112 C 67 130, 60 142, 56 150"></path>
+  </g>
+  <circle cx="52" cy="156" r="11" fill="none" stroke="#FFFFFF" stroke-width="6"></circle>
+  <circle cx="52" cy="156" r="3.5" fill="#FFFFFF"></circle>
+  <polyline points="98,82 116,82 122,72 130,98 138,68 144,82 158,82" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+</svg>

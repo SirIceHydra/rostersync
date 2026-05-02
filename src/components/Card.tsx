@@ -1,17 +1,12 @@
 import React from 'react';
 
-export const Card: React.FC<{ 
-  children: React.ReactNode; 
+export const Card: React.FC<{
+  children: React.ReactNode;
   className?: string;
-}> = ({ children, className = "" }) => {
+}> = ({ children, className = '' }) => {
   const hasCustomBg = className.includes('bg-');
-  const baseClasses = hasCustomBg
-    ? 'rounded-3xl shadow-sm border border-slate-200 overflow-hidden'
-    : 'bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden';
-  
-  return (
-    <div className={`${baseClasses} ${className}`}>
-      {children}
-    </div>
-  );
+  const shell = `rounded-[var(--rs-r-lg)] border border-[var(--rs-slate-200)] overflow-hidden ${
+    hasCustomBg ? '' : 'bg-[var(--rs-white)]'
+  }`;
+  return <div className={`${shell} ${className}`.trim()}>{children}</div>;
 };

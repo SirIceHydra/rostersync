@@ -1,0 +1,51 @@
+<!doctype html><html><head>
+<script src="https://unpkg.com/opentype.js@1.3.4/dist/opentype.min.js"></script>
+</head><body>
+<pre id="out">loading...</pre>
+<script>
+(async () => {
+  const out = document.getElementById('out');
+  try {
+    // Bricolage Grotesque from Google Fonts CDN — fetch the woff2 directly
+    // We need a TTF/OTF for opentype.js. Fetch from Google Fonts API and locate the font URL.
+    // Easiest: use jsdelivr for the npm package google-fonts (the @fontsource bricolage-grotesque)
+    const url = 'https://cdn.jsdelivr.net/fontsource/fonts/bricolage-grotesque@latest/latin-800-normal.ttf';
+    const buf = await (await fetch(url)).arrayBuffer();
+    const font = opentype.parse(buf);
+    
+    // Render full string and individual chars
+    const fontSize = 132;
+    function pathFor(text, x, y) {
+      const path = font.getPath(text, x, y, fontSize, { kerning: true, letterSpacing: -3/fontSize });
+      return path.toPathData(2);
+    }
+    function widthOf(text) {
+      return font.getAdvanceWidth(text, fontSize, { kerning: true, letterSpacing: -3/fontSize });
+    }
+    
+    // Get path for "r"
+    const rPath = pathFor('r', 0, 135);
+    const rWidth = widthOf('r');
+    // After r, position the sync-o, then "stersync."
+    // The natural "ro" advance:
+    const roWidth = widthOf('ro');
+    const oCenter = rWidth + (roWidth - rWidth)/2;
+    // After o, "stersync." starts at roWidth
+    const stersyncPath = pathFor('stersync', roWidth, 135);
+    const fullWidth = widthOf('rostersync');
+    // Period: position it after "rostersync" — separately so we can color it
+    const periodPath = pathFor('.', fullWidth, 135);
+    const totalWidth = widthOf('rostersync.');
+    
+    const data = {
+      rPath, rWidth, oCenter, stersyncPath, fullWidth, totalWidth, periodPath,
+      roWidth
+    };
+    out.textContent = JSON.stringify(data, null, 2);
+    window._fontData = data;
+  } catch (e) {
+    out.textContent = 'error: ' + e.message + '\n' + e.stack;
+  }
+})();
+</script>
+</body></html>

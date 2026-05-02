@@ -4,12 +4,12 @@
   "type": "module",
   "description": "RosterSync Medical MVP - Microservices Backend",
   "scripts": {
-    "dev:gateway":   "node --loader ts-node/esm services/gateway.ts",
-    "dev:auth":      "node --loader ts-node/esm services/auth-service.ts",
-    "dev:roster":    "node --loader ts-node/esm services/roster-service.ts",
-    "dev:request":   "node --loader ts-node/esm services/request-service.ts",
-    "dev:user":      "node --loader ts-node/esm services/user-service.ts",
-    "dev:analytics": "node --loader ts-node/esm services/analytics-service.ts",
+    "dev:gateway":   "tsx services/gateway.ts",
+    "dev:auth":      "tsx services/auth-service.ts",
+    "dev:roster":    "tsx services/roster-service.ts",
+    "dev:request":   "tsx services/request-service.ts",
+    "dev:user":      "tsx services/user-service.ts",
+    "dev:analytics": "tsx services/analytics-service.ts",
     "dev": "concurrently --kill-others-on-fail -n auth,roster,request,user,analytics,gateway -c blue,green,yellow,magenta,cyan,white \"npm run dev:auth\" \"npm run dev:roster\" \"npm run dev:request\" \"npm run dev:user\" \"npm run dev:analytics\" \"sleep 2 && npm run dev:gateway\"",
     "dev:all": "npm run dev",
     "build": "tsc --project tsconfig.json",
@@ -38,6 +38,7 @@
     "@types/pg": "^8.11.5",
     "concurrently": "^8.2.2",
     "ts-node": "^10.9.2",
+    "tsx": "^4.19.3",
     "typescript": "^5.3.3"
   }
 }

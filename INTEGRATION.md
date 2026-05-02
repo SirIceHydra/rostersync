@@ -13,7 +13,7 @@ The application now uses a **microservices architecture** with:
 - **Analytics Service** (Port 4005) - Fairness reports
 
 ### Database
-- **SQLite** (can be swapped to PostgreSQL/MySQL)
+- **PostgreSQL** (`DATABASE_URL` in `backend/.env`)
 - Automatic schema creation
 - Indexed for performance
 
@@ -47,15 +47,20 @@ npm run dev  # Starts on http://localhost:3000
 
 **Backend** (`backend/.env`):
 ```env
+DATABASE_URL=postgresql://user:pass@localhost:5432/rostersync
 JWT_SECRET=your-secret-key
-DB_PATH=./data/rostersync.db
-CORS_ORIGIN=http://localhost:3000
+# Optional in dev — defaults allow common localhost:Vite ports
+# CORS_ORIGIN=http://localhost:3000,http://localhost:3003
 ```
 
-**Frontend** (`.env` or `vite.config.ts`):
+**Frontend** (`.env` in repo root):
 ```env
-VITE_API_URL=http://localhost:4000
+# Optional: leave unset so `npm run dev` proxies /api → gateway :4000
+# VITE_API_URL=http://localhost:4000
+# VITE_GATEWAY_PROXY_TARGET=http://127.0.0.1:4000
 ```
+
+**Always use the gateway (4000) from the SPA.** Do not point `VITE_API_URL` at auth/roster/etc. ports — routes like `/api/rosters/archive` are only wired through the gateway in typical setups.
 
 ## Features Implemented
 

@@ -8,6 +8,7 @@ import {
   normalizeFairnessHistoryMode,
 } from '../shared/fairnessRollup.js';
 import { logger } from '../shared/logger.js';
+import { corsOrigin } from '../shared/corsOrigin.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -17,7 +18,7 @@ const PORT = process.env.ANALYTICS_SERVICE_PORT || 4005;
 const db = Database.getInstance();
 
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: corsOrigin(),
   credentials: true
 }));
 app.use(express.json());
@@ -136,8 +137,8 @@ app.get('/api/analytics/roster/:year/:month/fairness', authMiddleware, withDept,
   }
 });
 
-// ── Get fairness settings ─────────────────────────────────────────────────────
-app.get('/api/analytics/fairness-settings', authMiddleware, withDept, adminOnly, async (req, res) => {
+// ── Get fairness settings (read: any department member; write: admin only) ───
+app.get('/api/analytics/fairness-settings', authMiddleware, withDept, async (req, res) => {
   try {
     const departmentId = (req as any).departmentId;
     const row = await db.get(

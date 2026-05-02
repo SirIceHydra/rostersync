@@ -1,0 +1,23 @@
+<!doctype html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@800&display=swap" rel="stylesheet">
+<style>span{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:132px;letter-spacing:-3px;white-space:pre}</style>
+</head><body>
+<span id="r">r</span>
+<span id="o">o</span>
+<span id="ro">ro</span>
+<span id="rostersync">rostersync</span>
+<span id="rostersyncdot">rostersync.</span>
+<span id="r_">r </span>
+<span id="stersync">stersync</span>
+<span id="stersyncdot">stersync.</span>
+<script>
+window.addEventListener('load', async () => {
+  await document.fonts.ready;
+  const ids = ['r','o','ro','rostersync','rostersyncdot','r_','stersync','stersyncdot'];
+  const out = {};
+  ids.forEach(id => out[id] = document.getElementById(id).getBoundingClientRect().width);
+  document.title = JSON.stringify(out);
+  document.body.innerHTML = '<pre id="result">'+JSON.stringify(out,null,2)+'</pre>';
+});
+</script>
+</body></html>
