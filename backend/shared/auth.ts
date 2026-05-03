@@ -3,6 +3,11 @@ import { Request, Response, NextFunction } from 'express';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-in-production';
 
+// Configurable via env. Default 5 days — matches enterprise "stay logged in" expectation.
+// Set JWT_EXPIRY_DAYS=1 for short-lived tokens, =30 for long-lived ones.
+const JWT_EXPIRY_DAYS = parseInt(process.env.JWT_EXPIRY_DAYS ?? '5', 10) || 5;
+const JWT_EXPIRY_SECONDS = JWT_EXPIRY_DAYS * 24 * 60 * 60;
+
 export interface JWTPayload {
   userId: string;
   email: string;
@@ -10,7 +15,12 @@ export interface JWTPayload {
 }
 
 export function generateToken(payload: JWTPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY_SECONDS });
+}
+
+/** Returns the expiry timestamp (ms) of a freshly-issued token. */
+export function tokenExpiresAt(): number {
+  return Date.now() + JWT_EXPIRY_SECONDS * 1000;
 }
 
 export function verifyToken(token: string): JWTPayload | null {

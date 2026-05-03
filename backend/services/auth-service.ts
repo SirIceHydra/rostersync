@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { Database } from '../shared/database.js';
-import { generateToken, verifyToken, authMiddleware as sharedAuthMiddleware, adminOnly, requireDepartment } from '../shared/auth.js';
+import { generateToken, tokenExpiresAt, verifyToken, authMiddleware as sharedAuthMiddleware, adminOnly, requireDepartment } from '../shared/auth.js';
 import { generateUniqueDepartmentCode } from '../shared/departmentCode.js';
 import { logger } from '../shared/logger.js';
 import { corsOrigin } from '../shared/corsOrigin.js';
@@ -107,6 +107,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     res.status(201).json({
       user: { id, email, name, role, firm: firm || null, cumulativeHolidayHours: 0, cumulativeTotalHours: 0, cumulativeWeekendShifts: 0, startDate: now },
       token,
+      tokenExpiresAt: tokenExpiresAt(),
       department: role === 'ADMIN' ? departments[0] : null,
       departments,
     });
@@ -143,6 +144,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
         startDate: user.start_date || null,
       },
       token,
+      tokenExpiresAt: tokenExpiresAt(),
       departments,
     });
   } catch (error: any) {
@@ -177,6 +179,29 @@ app.get('/api/auth/verify', async (req, res) => {
   } catch (error: any) {
     logger.error({ err: error }, 'Verify error');
     res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
+// ── Refresh token ─────────────────────────────────────────────────────────────
+// Issues a fresh token when the existing one is still valid but nearing expiry.
+// The client calls this proactively (e.g. when < 24h remain) so active users
+// are never interrupted by an expiry prompt mid-session.
+app.post('/api/auth/refresh', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token provided' });
+
+    const payload = verifyToken(authHeader.substring(7));
+    if (!payload) return res.status(401).json({ error: 'Token expired or invalid — please log in again' });
+
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [payload.userId]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const token = generateToken({ userId: user.id, email: user.email, role: user.role });
+    res.json({ token, tokenExpiresAt: tokenExpiresAt() });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Refresh error');
+    res.status(500).json({ error: 'Refresh failed' });
   }
 });
 

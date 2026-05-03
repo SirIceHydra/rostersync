@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Lock, User, Building } from 'lucide-react';
+import { Mail, Lock, User, Building, Eye, EyeOff } from 'lucide-react';
 import { Button } from './Button';
 import { Card } from './Card';
 import { Role } from '../../types';
@@ -17,30 +17,38 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister }) => 
   const [role, setRole] = useState<Role>(Role.DOCTOR);
   const [firm, setFirm] = useState('');
   const [departmentName, setDepartmentName] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!isLogin) {
+      if (!name || !email || !password) {
+        setError('Please fill in all required fields');
+        return;
+      }
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match');
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
       if (isLogin) {
         await onLogin(email, password);
       } else {
-        if (!name || !email || !password) {
-          setError('Please fill in all required fields');
-          return;
-        }
-        await onRegister({
-          email,
-          password,
-          name,
-          role,
-          firm: firm || undefined,
-          departmentName: role === Role.ADMIN ? departmentName || undefined : undefined,
-        });
+        await onRegister({ email, password, name, role, firm: firm || undefined, departmentName: role === Role.ADMIN ? departmentName || undefined : undefined });
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -74,7 +82,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister }) => 
               type="button"
               role="tab"
               aria-selected={isLogin}
-              onClick={() => setIsLogin(true)}
+              onClick={() => { setIsLogin(true); setConfirmPassword(''); setError(''); }}
               className={`flex-1 min-h-11 rounded-[var(--rs-r-md)] px-4 text-sm font-semibold transition-shadow ${
                 isLogin ? 'bg-white text-slate-900 shadow-[var(--rs-shadow-xs)]' : 'text-slate-600 hover:text-slate-800'
               }`}
@@ -85,7 +93,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister }) => 
               type="button"
               role="tab"
               aria-selected={!isLogin}
-              onClick={() => setIsLogin(false)}
+              onClick={() => { setIsLogin(false); setError(''); }}
               className={`flex-1 min-h-11 rounded-[var(--rs-r-md)] px-4 text-sm font-semibold transition-shadow ${
                 !isLogin ? 'bg-white text-slate-900 shadow-[var(--rs-shadow-xs)]' : 'text-slate-600 hover:text-slate-800'
               }`}
@@ -203,16 +211,57 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onRegister }) => 
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} strokeWidth={2} />
                 <input
                   id="login-password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="rs-input rs-input--leading-icon font-medium"
+                  className="rs-input rs-input--leading-icon pr-11 font-medium"
                   placeholder="••••••••"
                   required
-                  minLength={6}
+                  minLength={isLogin ? 1 : 8}
                 />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
+
+            {!isLogin && (
+              <div className="rs-field">
+                <label className="rs-label uppercase tracking-widest text-[10px] text-slate-500" htmlFor="confirm-password">
+                  Confirm password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} strokeWidth={2} />
+                  <input
+                    id="confirm-password"
+                    type={showConfirm ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={`rs-input rs-input--leading-icon pr-11 font-medium ${confirmPassword && confirmPassword !== password ? 'border-rose-400 ring-rose-200' : ''}`}
+                    placeholder="••••••••"
+                    required
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowConfirm(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                {confirmPassword && confirmPassword !== password && (
+                  <p className="text-[9px] font-bold text-rose-500 mt-1">Passwords do not match</p>
+                )}
+              </div>
+            )}
 
             <Button type="submit" variant="primary" className="w-full !min-h-[52px] text-base" disabled={loading}>
               {loading ? 'Please wait…' : isLogin ? 'Login' : 'Create account'}

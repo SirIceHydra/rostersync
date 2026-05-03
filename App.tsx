@@ -37,7 +37,8 @@ import {
   Archive,
   Link2,
   UserX,
-  CircleDashed
+  CircleDashed,
+  CalendarCheck
 } from 'lucide-react';
 
 // --- Production UI Components ---
@@ -46,13 +47,14 @@ import { Button } from './src/components/Button';
 import { Badge } from './src/components/Badge';
 import { RosterPrintSheet } from './src/components/RosterPrintSheet';
 import { RosterHistoryView } from './src/components/RosterHistoryView';
+import { MyScheduleView } from './src/components/MyScheduleView';
 import {
   mergeApprovedForCalendar,
   spanCalendarMonths,
   type ApprovedScheduleMarker,
 } from './src/utils/scheduleRequestsMerge';
 
-type AppShellView = 'DASHBOARD' | 'ROSTER' | 'ANALYTICS' | 'REQUESTS' | 'DOCTORS' | 'TUNING' | 'ARCHIVE';
+type AppShellView = 'DASHBOARD' | 'ROSTER' | 'ANALYTICS' | 'REQUESTS' | 'DOCTORS' | 'TUNING' | 'ARCHIVE' | 'MY_SCHEDULE';
 
 // --- Join Department (user logged in but has no department) ---
 function JoinDepartmentView(props: {
@@ -201,10 +203,28 @@ export default function App() {
   useEffect(() => {
     const token = api.getToken();
     if (token) {
+      // If the stored token is past its expiry, clear it and go straight to login.
+      if (api.isTokenExpired()) {
+        api.setToken(null);
+        api.setDepartmentId(null);
+        return;
+      }
       loadUserFromToken();
     } else {
       loadFromLocalStorage();
     }
+  }, []);
+
+  // Proactive token refresh: runs every 30 min. If <24h remain, silently renews.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (api.shouldRefresh()) {
+        api.refreshToken().catch(() => {
+          // If refresh fails (e.g. network blip), do nothing — next attempt will retry.
+        });
+      }
+    }, 30 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadUserFromToken = async () => {
@@ -421,8 +441,8 @@ export default function App() {
 
   const handleLogin = async (email: string, password: string) => {
     try {
-      const { user, token, departments: depts } = await api.login(email, password);
-      api.setToken(token);
+      const { user, token, tokenExpiresAt, departments: depts } = await api.login(email, password);
+      api.setToken(token, tokenExpiresAt);
       setCurrentUser(user);
       setDepartments(depts || []);
       setNewDepartmentCode(null);
@@ -443,8 +463,8 @@ export default function App() {
 
   const handleRegister = async (data: { email: string; password: string; name: string; role: string; firm?: string; departmentName?: string }) => {
     try {
-      const { user, token, department, departments: depts } = await api.register(data);
-      api.setToken(token);
+      const { user, token, tokenExpiresAt, department, departments: depts } = await api.register(data);
+      api.setToken(token, tokenExpiresAt);
       setCurrentUser(user);
       setDepartments(depts || []);
       localStorage.setItem('rs_user', JSON.stringify(user));
@@ -682,6 +702,38 @@ export default function App() {
     }
   };
 
+  const handleUnpublish = async () => {
+    if (!roster || roster.status !== 'FINAL') return;
+    try {
+      await api.unpublishRoster(roster.id);
+      setRoster({ ...roster, status: 'DRAFT' });
+      setInfoBanner('Reverted to draft. Doctors can no longer see this month.');
+    } catch (error: any) {
+      setApiError(error.message);
+    }
+  };
+
+  const handleApproveJoin = async (id: string) => {
+    try {
+      await api.approveJoinRequest(id);
+      setJoinRequests(prev => prev.filter(r => r.id !== id));
+      // Refresh doctors list so the newly-approved member appears
+      const doctorsData = await api.getDoctors().catch(() => null);
+      if (doctorsData) setDoctors(doctorsData);
+    } catch (error: any) {
+      setApiError(error.message);
+    }
+  };
+
+  const handleRejectJoin = async (id: string) => {
+    try {
+      await api.rejectJoinRequest(id);
+      setJoinRequests(prev => prev.filter(r => r.id !== id));
+    } catch (error: any) {
+      setApiError(error.message);
+    }
+  };
+
   const handlePublish = async () => {
     if (!roster) return;
 
@@ -753,6 +805,7 @@ export default function App() {
       ]
     : [
         { view: 'DASHBOARD', label: 'Home', Icon: House },
+        { view: 'MY_SCHEDULE', label: 'My shifts', Icon: CalendarCheck },
         { view: 'ROSTER', label: 'Roster', Icon: Calendar },
         { view: 'ANALYTICS', label: 'Metrics', Icon: BarChart3 },
         { view: 'TUNING', label: 'Balance', Icon: SlidersHorizontal },
@@ -954,14 +1007,15 @@ export default function App() {
           </div>
         )}
         {view === 'DASHBOARD' && (
-          <DashboardView 
-            user={currentUser} 
-            roster={roster} 
-            requests={requests} 
+          <DashboardView
+            user={currentUser}
+            roster={roster}
+            requests={requests}
             report={fairnessReport}
             doctors={doctors}
             onGenerate={handleAutoGenerate}
             onPublish={handlePublish}
+            onUnpublish={handleUnpublish}
             onRegenerate={handleRegenerateSelected}
             selectedMonthOffset={selectedMonthOffset}
             onChangeMonth={async (offset) => {
@@ -969,6 +1023,9 @@ export default function App() {
             }}
             loading={loading}
             onNavigate={(v) => setView(v)}
+            joinRequests={joinRequests}
+            onApproveJoin={handleApproveJoin}
+            onRejectJoin={handleRejectJoin}
           />
         )}
         {view === 'ROSTER' && (
@@ -1043,12 +1100,19 @@ export default function App() {
           />
         )}
         {view === 'TUNING' && (
-          <TuningView 
+          <TuningView
             report={fairnessReport}
             doctors={doctors}
             roster={roster}
             isAdmin={currentUser.role === Role.ADMIN}
             onFairnessSettingsSaved={() => loadRosterForOffset(selectedMonthOffset)}
+          />
+        )}
+        {view === 'MY_SCHEDULE' && (
+          <MyScheduleView
+            roster={roster}
+            currentUser={currentUser}
+            requests={requests}
           />
         )}
       </main>
@@ -1058,9 +1122,12 @@ export default function App() {
         style={{ boxShadow: '0 -4px 24px rgba(244,124,32,0.08)' }}
         aria-label="Quick navigation"
       >
-        {/* Mobile: 3 primary tabs — rest live in the hamburger drawer */}
+        {/* Mobile: 3-4 primary tabs — rest live in the hamburger drawer */}
         <div className="flex md:hidden flex-row justify-around items-stretch w-full pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]">
           <TabItem active={view === 'DASHBOARD'} icon={<House size={20} />} label="Home" onClick={() => goNav('DASHBOARD')} />
+          {!isDeptAdmin && (
+            <TabItem active={view === 'MY_SCHEDULE'} icon={<CalendarCheck size={20} />} label="My shifts" onClick={() => goNav('MY_SCHEDULE')} />
+          )}
           <TabItem active={view === 'ROSTER'} icon={<Calendar size={20} />} label="Roster" onClick={() => goNav('ROSTER')} />
           <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={20} />} label="Requests" onClick={() => goNav('REQUESTS')} />
         </div>
@@ -1079,9 +1146,8 @@ export default function App() {
         ) : (
           <div className="hidden md:flex flex-row justify-around items-stretch w-full py-2 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]">
             <TabItem active={view === 'DASHBOARD'} icon={<House size={19} />} label="Home" onClick={() => goNav('DASHBOARD')} />
+            <TabItem active={view === 'MY_SCHEDULE'} icon={<CalendarCheck size={19} />} label="My shifts" onClick={() => goNav('MY_SCHEDULE')} />
             <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => goNav('ROSTER')} />
-            <TabItem active={view === 'ANALYTICS'} icon={<BarChart3 size={19} />} label="Metrics" onClick={() => goNav('ANALYTICS')} />
-            <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => goNav('TUNING')} />
             <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => goNav('REQUESTS')} />
             <TabItem active={view === 'ARCHIVE'} icon={<Archive size={19} />} label="Past" onClick={() => goNav('ARCHIVE')} />
           </div>
@@ -1348,20 +1414,24 @@ function buildDoctorReasoning(
   return { lines, tag, tagLabel };
 }
 
-const DashboardView: React.FC<{ 
-  user: User; 
-  roster: Roster | null; 
-  requests: Request[]; 
-  report: any; 
+const DashboardView: React.FC<{
+  user: User;
+  roster: Roster | null;
+  requests: Request[];
+  report: any;
   doctors: User[];
   onGenerate: () => void;
   onPublish: () => void;
+  onUnpublish?: () => void;
   onRegenerate: () => void;
   selectedMonthOffset: 0 | 1;
   onChangeMonth: (offset: 0 | 1) => void;
   loading?: boolean;
   onNavigate?: (view: 'ROSTER' | 'ANALYTICS' | 'REQUESTS') => void;
-}> = ({ user, roster, requests, report, doctors, onGenerate, onPublish, onRegenerate, selectedMonthOffset, onChangeMonth, loading, onNavigate }) => {
+  joinRequests?: { id: string; userId: string; email: string; name: string; createdAt: number }[];
+  onApproveJoin?: (id: string) => void;
+  onRejectJoin?: (id: string) => void;
+}> = ({ user, roster, requests, report, doctors, onGenerate, onPublish, onUnpublish, onRegenerate, selectedMonthOffset, onChangeMonth, loading, onNavigate, joinRequests, onApproveJoin, onRejectJoin }) => {
   const isAdmin = user.role === Role.ADMIN;
   const pendingCount = requests.filter(r => r.status === RequestStatus.PENDING).length;
   
@@ -1438,6 +1508,17 @@ const DashboardView: React.FC<{
                 <ShieldCheck size={14} /> PUBLISH
               </Button>
             )}
+            {roster && roster.status === 'FINAL' && onUnpublish && (
+              <Button
+                onClick={onUnpublish}
+                variant="secondary"
+                className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0 text-amber-700 border-amber-200 hover:bg-amber-50"
+                disabled={loading}
+                title="Revert to draft — hides the roster from doctors until republished"
+              >
+                Revert to draft
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -1493,6 +1574,47 @@ const DashboardView: React.FC<{
           </Card>
         </button>
       </div>
+
+      {/* Admin: pending join requests from doctors who self-registered */}
+      {isAdmin && joinRequests && joinRequests.length > 0 && (
+        <Card className="p-5 border-amber-200 bg-amber-50/40 space-y-3">
+          <div className="flex items-center gap-2">
+            <Users size={15} className="text-amber-600 shrink-0" />
+            <h3 className="text-[10px] font-black text-amber-800 uppercase tracking-widest">
+              Join requests — {joinRequests.length} pending
+            </h3>
+          </div>
+          <p className="text-[9px] font-bold text-amber-700 leading-relaxed">
+            These doctors registered and requested to join your department. Approve to add them to the roster; decline to remove the request.
+          </p>
+          <div className="space-y-2">
+            {joinRequests.map(jr => (
+              <div key={jr.id} className="flex items-center justify-between gap-3 bg-white rounded-xl px-3 py-2.5 border border-amber-100">
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-slate-900 truncate">{jr.name}</div>
+                  <div className="text-[9px] font-bold text-slate-400 truncate">{jr.email}</div>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onApproveJoin?.(jr.id)}
+                    className="min-h-8 px-2.5 rounded-lg bg-emerald-600 text-white text-[9px] font-black uppercase tracking-wide hover:bg-emerald-700 transition-colors touch-manipulation"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRejectJoin?.(jr.id)}
+                    className="min-h-8 px-2.5 rounded-lg bg-white text-rose-600 text-[9px] font-black uppercase tracking-wide border border-rose-200 hover:bg-rose-50 transition-colors touch-manipulation"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {!isAdmin && !roster && !loading && (
         <Card className="p-4 border-indigo-100 bg-indigo-50/80">

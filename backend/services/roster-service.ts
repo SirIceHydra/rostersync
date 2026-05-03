@@ -295,6 +295,53 @@ app.post('/api/rosters/:rosterId/publish', authMiddleware, withDept, adminOnly, 
   }
 });
 
+// ── Unpublish roster (revert FINAL → DRAFT, roll back cumulative stats) ────────
+app.post('/api/rosters/:rosterId/unpublish', authMiddleware, withDept, adminOnly, async (req, res) => {
+  try {
+    const departmentId = (req as any).departmentId;
+    const { rosterId } = req.params;
+
+    const roster = await db.get('SELECT * FROM rosters WHERE id = ? AND department_id = ?', [rosterId, departmentId]);
+    if (!roster)                return res.status(404).json({ error: 'Roster not found' });
+    if (roster.status !== 'FINAL') return res.status(400).json({ error: 'Roster is not published' });
+
+    const shifts = await db.all('SELECT * FROM shifts WHERE roster_id = ?', [rosterId]);
+
+    // Build per-doctor totals to subtract (mirror of publish logic)
+    const doctorStats: Record<string, { hours: number; weekends: number; phHours: number }> = {};
+    for (const shift of shifts) {
+      const isWeekend = shift.template_id && String(shift.template_id).includes('weekend');
+      const hours  = isWeekend ? 24 : 16;
+      const isPH   = Boolean(shift.is_public_holiday);
+      if (!doctorStats[shift.doctor_id]) doctorStats[shift.doctor_id] = { hours: 0, weekends: 0, phHours: 0 };
+      doctorStats[shift.doctor_id].hours   += hours;
+      if (isWeekend) doctorStats[shift.doctor_id].weekends++;
+      doctorStats[shift.doctor_id].phHours += isPH ? hours : 0;
+    }
+
+    const now = Date.now();
+    await db.transaction(async (tx) => {
+      for (const [doctorId, stats] of Object.entries(doctorStats)) {
+        await tx.run(
+          `UPDATE users
+           SET cumulative_total_hours    = GREATEST(0, COALESCE(cumulative_total_hours,    0) - ?),
+               cumulative_weekend_shifts = GREATEST(0, COALESCE(cumulative_weekend_shifts, 0) - ?),
+               cumulative_holiday_hours  = GREATEST(0, COALESCE(cumulative_holiday_hours,  0) - ?),
+               updated_at = ?
+           WHERE id = ?`,
+          [stats.hours, stats.weekends, stats.phHours, now, doctorId]
+        );
+      }
+      await tx.run('UPDATE rosters SET status = ?, updated_at = ? WHERE id = ?', ['DRAFT', now, rosterId]);
+    });
+
+    res.json({ success: true, message: 'Roster reverted to draft and cumulative stats rolled back' });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Unpublish roster error');
+    res.status(500).json({ error: 'Failed to unpublish roster' });
+  }
+});
+
 // ── Sync cumulative stats ─────────────────────────────────────────────────────
 app.post('/api/rosters/sync-cumulative', authMiddleware, withDept, adminOnly, async (req, res) => {
   try {

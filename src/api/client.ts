@@ -17,16 +17,25 @@ export interface Department {
   name: string | null;
 }
 
+const TOKEN_EXPIRY_KEY = 'rs_token_exp';
+// Refresh when fewer than this many ms remain on the token.
+const REFRESH_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 1 day
+
 class ApiClient {
   private token: string | null = null;
   private departmentId: string | null = null;
+  private refreshing: Promise<void> | null = null;
 
-  setToken(token: string | null) {
+  setToken(token: string | null, expiresAt?: number) {
     this.token = token;
     if (token) {
       localStorage.setItem('rs_token', token);
+      // Store expiry alongside the token so we can check it without decoding JWT.
+      const exp = expiresAt ?? Date.now() + 5 * 24 * 60 * 60 * 1000;
+      localStorage.setItem(TOKEN_EXPIRY_KEY, String(exp));
     } else {
       localStorage.removeItem('rs_token');
+      localStorage.removeItem(TOKEN_EXPIRY_KEY);
     }
   }
 
@@ -35,6 +44,35 @@ class ApiClient {
       this.token = localStorage.getItem('rs_token');
     }
     return this.token;
+  }
+
+  /** Returns true if the stored token is expired (or missing). App should call this on init. */
+  isTokenExpired(): boolean {
+    const exp = localStorage.getItem(TOKEN_EXPIRY_KEY);
+    if (!exp) return !this.getToken(); // no expiry stored → treat as expired only if no token
+    return Date.now() > parseInt(exp, 10);
+  }
+
+  /** Returns true when the token exists but is within REFRESH_THRESHOLD_MS of expiry. */
+  shouldRefresh(): boolean {
+    const exp = localStorage.getItem(TOKEN_EXPIRY_KEY);
+    if (!exp || !this.getToken()) return false;
+    const remaining = parseInt(exp, 10) - Date.now();
+    return remaining > 0 && remaining < REFRESH_THRESHOLD_MS;
+  }
+
+  /** Silently refreshes the token. Coalesces concurrent calls into one request. */
+  async refreshToken(): Promise<void> {
+    if (this.refreshing) return this.refreshing;
+    this.refreshing = (async () => {
+      try {
+        const data = await this.request<{ token: string; tokenExpiresAt: number }>('/api/auth/refresh', { method: 'POST' });
+        this.setToken(data.token, data.tokenExpiresAt);
+      } finally {
+        this.refreshing = null;
+      }
+    })();
+    return this.refreshing;
   }
 
   setDepartmentId(id: string | null) {
@@ -119,14 +157,14 @@ class ApiClient {
 
   // Auth
   async register(data: { email: string; password: string; name: string; role: string; firm?: string; departmentName?: string }) {
-    return this.request<{ user: any; token: string; department?: Department; departments: Department[] }>('/api/auth/register', {
+    return this.request<{ user: any; token: string; tokenExpiresAt?: number; department?: Department; departments: Department[] }>('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
   async login(email: string, password: string) {
-    return this.request<{ user: any; token: string; departments: Department[] }>('/api/auth/login', {
+    return this.request<{ user: any; token: string; tokenExpiresAt?: number; departments: Department[] }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -252,6 +290,12 @@ class ApiClient {
 
   async publishRoster(rosterId: string) {
     return this.request<{ success: boolean }>(`/api/rosters/${rosterId}/publish`, {
+      method: 'POST',
+    });
+  }
+
+  async unpublishRoster(rosterId: string) {
+    return this.request<{ success: boolean; message: string }>(`/api/rosters/${rosterId}/unpublish`, {
       method: 'POST',
     });
   }
