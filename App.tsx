@@ -2732,6 +2732,7 @@ const TuningView: React.FC<{
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [balanceWhatYouNoticeOpen, setBalanceWhatYouNoticeOpen] = useState(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -2898,15 +2899,40 @@ const TuningView: React.FC<{
         </div>
       </Card>
 
-      <Card className="p-5 bg-indigo-50/50 border-indigo-100">
-        <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-3">What you will notice</h3>
-        <ul className="space-y-2 text-[11px] text-slate-600 leading-relaxed list-disc pl-4">
-          <li><strong>Gentler or stricter balance:</strong> tighter numbers mean you see amber banners sooner if one person has many more nights than someone else in the same month.</li>
-          <li><strong>Weekend spread:</strong> controls how many extra Saturday or Sunday blocks one person can have compared with the quietest colleague before you are nudged to review.</li>
-          <li><strong>Rest between nights:</strong> larger gaps mean people get more breathing room; the smallest setting is only for teams that are very short-staffed.</li>
-          <li><strong>Busy weeks:</strong> caps how many on-call nights someone can carry in any rolling week so nobody stacks too many shifts together.</li>
-          <li><strong>Approved full leave</strong> is never overwritten. If the whole team is off, a day may still need a manual decision.</li>
-        </ul>
+      <Card className="overflow-hidden bg-indigo-50/50 border-indigo-100 p-0">
+        <button
+          type="button"
+          id="balance-what-you-notice-trigger"
+          aria-expanded={balanceWhatYouNoticeOpen}
+          aria-controls="balance-what-you-notice-panel"
+          onClick={() => setBalanceWhatYouNoticeOpen((o) => !o)}
+          className="flex w-full items-center justify-between gap-3 p-4 md:p-5 text-left touch-manipulation hover:bg-indigo-100/40 active:bg-indigo-100/60 transition-colors min-h-[48px]"
+        >
+          <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+            What you will notice
+          </span>
+          <ChevronDown
+            size={18}
+            className={`shrink-0 text-indigo-600 transition-transform duration-200 ${balanceWhatYouNoticeOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+        {balanceWhatYouNoticeOpen && (
+          <div
+            id="balance-what-you-notice-panel"
+            role="region"
+            aria-labelledby="balance-what-you-notice-trigger"
+            className="px-4 pb-4 pt-0 md:px-5 md:pb-5 border-t border-indigo-100/80"
+          >
+            <ul className="space-y-2 text-[11px] text-slate-600 leading-relaxed list-disc pl-4 pt-3">
+              <li><strong>Gentler or stricter balance:</strong> tighter numbers mean you see amber banners sooner if one person has many more nights than someone else in the same month.</li>
+              <li><strong>Weekend spread:</strong> controls how many extra Saturday or Sunday blocks one person can have compared with the quietest colleague before you are nudged to review.</li>
+              <li><strong>Rest between nights:</strong> larger gaps mean people get more breathing room; the smallest setting is only for teams that are very short-staffed.</li>
+              <li><strong>Busy weeks:</strong> caps how many on-call nights someone can carry in any rolling week so nobody stacks too many shifts together.</li>
+              <li><strong>Approved full leave</strong> is never overwritten. If the whole team is off, a day may still need a manual decision.</li>
+            </ul>
+          </div>
+        )}
       </Card>
 
       <Card className="p-5 space-y-4">
