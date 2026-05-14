@@ -2413,6 +2413,7 @@ const AnalyticsView: React.FC<{
   onChangeMonth: (offset: 0 | 1) => void;
   onNavigate?: (view: 'REQUESTS' | 'ROSTER') => void;
 }> = ({ report, doctors, roster, requests, currentUser, selectedMonthOffset, onChangeMonth, onNavigate }) => {
+  const [metricsRosterBuiltOpen, setMetricsRosterBuiltOpen] = useState(false);
   const today = new Date();
   const baseMonth = today.getMonth();
   const baseYear = today.getFullYear();
@@ -2422,6 +2423,10 @@ const AnalyticsView: React.FC<{
   const viewYear = roster?.year ?? yearIdx;
   const analyticsWarnings = getRosterWarningsForView(report?.warnings, viewMonth, viewYear);
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  useEffect(() => {
+    setMetricsRosterBuiltOpen(false);
+  }, [selectedMonthOffset, roster?.id, roster?.month, roster?.year]);
 
   if (!report) return (
     <div className="space-y-4">
@@ -2471,35 +2476,60 @@ const AnalyticsView: React.FC<{
         </div>
       )}
 
-      <Card className="p-4 bg-indigo-50 border border-indigo-100">
-        <div className="flex items-center gap-2 mb-3">
-          <Info size={14} className="text-indigo-500" />
-          <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">How the roster is built</h4>
-        </div>
-        <ol className="text-[10px] text-slate-600 font-bold space-y-1.5 leading-relaxed list-decimal pl-4">
-          <li><span className="text-indigo-700">Safety first:</span> full leave is never ignored. Rest gaps and weekly caps follow your department settings.</li>
-          <li><span className="text-indigo-700">Weekends:</span> monthly caps stop one person from taking every Saturday or Sunday.</li>
-          <li>
-            <span className="text-indigo-700">Fair order:</span> honour &quot;prefer to work&quot; days, respect post-call preferences where possible, balance weekend counts, spread public-holiday duty across the year, then tilt toward people who have carried{' '}
-            {fhT.isCalendarYear ? (
-              <>
-                a lighter share in <strong>{schedYear}</strong> (see <strong>Balance</strong> — the full published record is still kept).
-              </>
-            ) : (
-              <>less of the load <strong>across all published months</strong>.</>
-            )}
-          </li>
-          <li><span className="text-indigo-700">New starters:</span> they get a normal share of the month unless an admin chooses a gentler start or a later first month.</li>
-          <li>
-            <span className="text-indigo-700">Last pass:</span> weekday swaps may nudge hours between people who are high or low versus the team average for the{' '}
-            {fhT.isCalendarYear ? (
-              <strong>{schedYear}</strong>
-            ) : (
-              <>full published record</>
-            )}
-            , without breaking preferred work days or approved unavailability.
-          </li>
-        </ol>
+      <Card className="overflow-hidden bg-indigo-50 border border-indigo-100 p-0">
+        <button
+          type="button"
+          id="analytics-roster-built-explainer-trigger"
+          aria-expanded={metricsRosterBuiltOpen}
+          aria-controls="analytics-roster-built-explainer-panel"
+          onClick={() => setMetricsRosterBuiltOpen((o) => !o)}
+          className="flex w-full items-center justify-between gap-3 p-4 text-left touch-manipulation hover:bg-indigo-100/60 transition-colors rounded-xl min-h-[48px]"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <Info size={14} className="text-indigo-500 shrink-0" aria-hidden />
+            <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">
+              How the roster is built
+            </h4>
+          </div>
+          <ChevronDown
+            size={18}
+            className={`shrink-0 text-indigo-600 transition-transform duration-200 ${metricsRosterBuiltOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+        {metricsRosterBuiltOpen && (
+          <div
+            id="analytics-roster-built-explainer-panel"
+            role="region"
+            aria-labelledby="analytics-roster-built-explainer-trigger"
+            className="px-4 pb-4 pt-0 border-t border-indigo-100/80"
+          >
+            <ol className="text-[10px] text-slate-600 font-bold space-y-1.5 leading-relaxed list-decimal pl-4 pt-3">
+              <li><span className="text-indigo-700">Safety first:</span> full leave is never ignored. Rest gaps and weekly caps follow your department settings.</li>
+              <li><span className="text-indigo-700">Weekends:</span> monthly caps stop one person from taking every Saturday or Sunday.</li>
+              <li>
+                <span className="text-indigo-700">Fair order:</span> honour &quot;prefer to work&quot; days, respect post-call preferences where possible, balance weekend counts, spread public-holiday duty across the year, then tilt toward people who have carried{' '}
+                {fhT.isCalendarYear ? (
+                  <>
+                    a lighter share in <strong>{schedYear}</strong> (see <strong>Balance</strong> — the full published record is still kept).
+                  </>
+                ) : (
+                  <>less of the load <strong>across all published months</strong>.</>
+                )}
+              </li>
+              <li><span className="text-indigo-700">New starters:</span> they get a normal share of the month unless an admin chooses a gentler start or a later first month.</li>
+              <li>
+                <span className="text-indigo-700">Last pass:</span> weekday swaps may nudge hours between people who are high or low versus the team average for the{' '}
+                {fhT.isCalendarYear ? (
+                  <strong>{schedYear}</strong>
+                ) : (
+                  <>full published record</>
+                )}
+                , without breaking preferred work days or approved unavailability.
+              </li>
+            </ol>
+          </div>
+        )}
       </Card>
 
       <Card>
