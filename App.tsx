@@ -1825,11 +1825,13 @@ const RosterView: React.FC<{
   const [selectedDay, setSelectedDay] = useState(initialDay);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [calendarEditingShiftId, setCalendarEditingShiftId] = useState<string | null>(null);
+  const [rosterBuiltExplainerOpen, setRosterBuiltExplainerOpen] = useState(false);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
   useEffect(() => {
     setEditingShiftId(null);
     setCalendarEditingShiftId(null);
+    setRosterBuiltExplainerOpen(false);
   }, [selectedMonthOffset, roster?.id, roster?.month, roster?.year, viewMode]);
 
   const selectedShifts = roster?.shifts.filter(s => new Date(s.date).getDate() === selectedDay) || [];
@@ -2088,35 +2090,60 @@ const RosterView: React.FC<{
 
         {/* How this roster was generated — algorithm explainer */}
         {report && report.metrics?.length > 0 && (
-          <Card className="mt-4 p-4 bg-indigo-50 border border-indigo-100">
-            <div className="flex items-center gap-2 mb-3">
-              <Info size={14} className="text-indigo-500" />
-              <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">How this roster was built</h4>
-            </div>
-            <div className="text-[10px] text-slate-600 font-bold space-y-2 leading-relaxed">
-              <p><span className="text-indigo-700">1. Non-negotiables:</span> approved full leave always wins. Rest between shifts and how many nights someone can do in a week follow your department settings.</p>
-              <p><span className="text-indigo-700">2. Weekends:</span> no one is allowed to take every weekend in a month — caps keep Saturday and Sunday duty shared.</p>
-              <p>
-                <span className="text-indigo-700">3. Who goes first:</span> honour approved &quot;prefer to work&quot; days, then balance weekend counts, then spread public-holiday duty fairly, then tilt toward people who have carried{' '}
-                {fh.isCalendarYear ? (
-                  <>
-                    a lighter share <strong>in the current calendar year</strong> (see <strong>Balance</strong>; the full published record is still kept).
-                  </>
-                ) : (
-                  <>less of the load <strong>across all published months</strong>.</>
-                )}
-              </p>
-              <p><span className="text-indigo-700">4. New starters:</span> they are lined up with a normal share of the load unless an admin chooses &quot;start next month&quot; or &quot;full pace from day one.&quot;</p>
-              <p>
-                <span className="text-indigo-700">5. Evening out the month:</span> if two people are far apart on weeknight hours, the scheduler may swap who covers which weekday — up to the limit you set under <strong>Balance</strong> — without removing someone&apos;s agreed &quot;prefer to work&quot; day. The swap logic compares people against the team average for the{' '}
-                {fh.isCalendarYear && fh.schedulingYear != null ? (
-                  <strong>{fh.schedulingYear}</strong>
-                ) : (
-                  <>full published record</>
-                )}
-                .
-              </p>
-            </div>
+          <Card className="mt-4 overflow-hidden bg-indigo-50 border border-indigo-100 p-0">
+            <button
+              type="button"
+              id="roster-built-explainer-trigger"
+              aria-expanded={rosterBuiltExplainerOpen}
+              aria-controls="roster-built-explainer-panel"
+              onClick={() => setRosterBuiltExplainerOpen((o) => !o)}
+              className="flex w-full items-center justify-between gap-3 p-4 text-left touch-manipulation hover:bg-indigo-100/60 transition-colors rounded-xl min-h-[48px]"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Info size={14} className="text-indigo-500 shrink-0" aria-hidden />
+                <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">
+                  How this roster was built
+                </h4>
+              </div>
+              <ChevronDown
+                size={18}
+                className={`shrink-0 text-indigo-600 transition-transform duration-200 ${rosterBuiltExplainerOpen ? 'rotate-180' : ''}`}
+                aria-hidden
+              />
+            </button>
+            {rosterBuiltExplainerOpen && (
+              <div
+                id="roster-built-explainer-panel"
+                role="region"
+                aria-labelledby="roster-built-explainer-trigger"
+                className="px-4 pb-4 pt-0 border-t border-indigo-100/80"
+              >
+                <div className="text-[10px] text-slate-600 font-bold space-y-2 leading-relaxed pt-3">
+                  <p><span className="text-indigo-700">1. Non-negotiables:</span> approved full leave always wins. Rest between shifts and how many nights someone can do in a week follow your department settings.</p>
+                  <p><span className="text-indigo-700">2. Weekends:</span> no one is allowed to take every weekend in a month — caps keep Saturday and Sunday duty shared.</p>
+                  <p>
+                    <span className="text-indigo-700">3. Who goes first:</span> honour approved &quot;prefer to work&quot; days, then balance weekend counts, then spread public-holiday duty fairly, then tilt toward people who have carried{' '}
+                    {fh.isCalendarYear ? (
+                      <>
+                        a lighter share <strong>in the current calendar year</strong> (see <strong>Balance</strong>; the full published record is still kept).
+                      </>
+                    ) : (
+                      <>less of the load <strong>across all published months</strong>.</>
+                    )}
+                  </p>
+                  <p><span className="text-indigo-700">4. New starters:</span> they are lined up with a normal share of the load unless an admin chooses &quot;start next month&quot; or &quot;full pace from day one.&quot;</p>
+                  <p>
+                    <span className="text-indigo-700">5. Evening out the month:</span> if two people are far apart on weeknight hours, the scheduler may swap who covers which weekday — up to the limit you set under <strong>Balance</strong> — without removing someone&apos;s agreed &quot;prefer to work&quot; day. The swap logic compares people against the team average for the{' '}
+                    {fh.isCalendarYear && fh.schedulingYear != null ? (
+                      <strong>{fh.schedulingYear}</strong>
+                    ) : (
+                      <>full published record</>
+                    )}
+                    .
+                  </p>
+                </div>
+              </div>
+            )}
           </Card>
         )}
 
