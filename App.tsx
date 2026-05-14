@@ -2733,6 +2733,7 @@ const TuningView: React.FC<{
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [balanceWhatYouNoticeOpen, setBalanceWhatYouNoticeOpen] = useState(false);
+  const [balanceSituationsOpen, setBalanceSituationsOpen] = useState(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -3050,30 +3051,53 @@ const TuningView: React.FC<{
         )}
       </Card>
 
-      <Card className="p-5">
-        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Situations you might see</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px] leading-relaxed text-slate-600">
-          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
-            <span className="font-bold text-emerald-800 block mb-1">New colleagues</span>
-            They are given a normal share of the month instead of being buried or left out purely because their published workload in the{' '}
-            {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
-              <strong>{fhActive.schedulingYear}</strong>
-            ) : (
-              <>full record</>
-            )}{' '}
-            still looks thin.
-          </div>
-          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-            <span className="font-bold text-blue-800 block mb-1">Long leave</span>
-            People coming back are not automatically handed an unfair overload the first month.
-          </div>
-          <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
-            <span className="font-bold text-amber-900 block mb-1">Many "prefer not" days</span>
-            If several people mark the same dates, the schedule may still need someone — you may see a heads-up to decide manually.
-          </div>
-          <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
-            <span className="font-bold text-purple-900 block mb-1">Small or odd-sized teams</span>
-            Perfect symmetry is not always possible; looser balance settings reduce noise while you still cover the service.
+      <Card className="p-0 md:p-5 overflow-hidden">
+        <button
+          type="button"
+          className="md:hidden flex w-full items-center justify-between gap-3 p-4 text-left touch-manipulation hover:bg-slate-50 active:bg-slate-100 transition-colors min-h-[48px]"
+          aria-expanded={balanceSituationsOpen}
+          aria-controls="balance-situations-panel"
+          onClick={() => setBalanceSituationsOpen((o) => !o)}
+        >
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Situations you might see</span>
+          <ChevronDown
+            size={18}
+            className={`shrink-0 text-slate-500 transition-transform duration-200 ${balanceSituationsOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+        <h3 className="hidden md:block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+          Situations you might see
+        </h3>
+        <div
+          id="balance-situations-panel"
+          role="region"
+          aria-label="Situations you might see"
+          className={`${balanceSituationsOpen ? 'block' : 'hidden'} md:block px-4 pb-4 md:px-0 md:pb-0 border-t border-slate-100 md:border-0`}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px] leading-relaxed text-slate-600 pt-3 md:pt-0">
+            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+              <span className="font-bold text-emerald-800 block mb-1">New colleagues</span>
+              They are given a normal share of the month instead of being buried or left out purely because their published workload in the{' '}
+              {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
+                <strong>{fhActive.schedulingYear}</strong>
+              ) : (
+                <>full record</>
+              )}{' '}
+              still looks thin.
+            </div>
+            <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <span className="font-bold text-blue-800 block mb-1">Long leave</span>
+              People coming back are not automatically handed an unfair overload the first month.
+            </div>
+            <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+              <span className="font-bold text-amber-900 block mb-1">Many &quot;prefer not&quot; days</span>
+              If several people mark the same dates, the schedule may still need someone — you may see a heads-up to decide manually.
+            </div>
+            <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
+              <span className="font-bold text-purple-900 block mb-1">Small or odd-sized teams</span>
+              Perfect symmetry is not always possible; looser balance settings reduce noise while you still cover the service.
+            </div>
           </div>
         </div>
       </Card>
