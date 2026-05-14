@@ -38,7 +38,8 @@ import {
   Link2,
   UserX,
   CircleDashed,
-  CalendarCheck
+  CalendarCheck,
+  LayoutList,
 } from 'lucide-react';
 
 // --- Production UI Components ---
@@ -2258,20 +2259,26 @@ const RosterView: React.FC<{
             <button
               type="button"
               onClick={() => setViewMode('calendar')}
-              className={`px-4 py-2.5 min-h-11 rounded-lg text-[10px] font-black transition-all touch-manipulation ${
-                viewMode === 'calendar' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+              aria-label="Calendar view"
+              aria-pressed={viewMode === 'calendar'}
+              title="Calendar view"
+              className={`flex items-center justify-center min-h-11 min-w-11 rounded-lg transition-all touch-manipulation ${
+                viewMode === 'calendar' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              Calendar
+              <Calendar size={18} aria-hidden />
             </button>
             <button
               type="button"
               onClick={() => setViewMode('list')}
-              className={`px-4 py-2.5 min-h-11 rounded-lg text-[10px] font-black transition-all touch-manipulation ${
-                viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
+              title="List view"
+              className={`flex items-center justify-center min-h-11 min-w-11 rounded-lg transition-all touch-manipulation ${
+                viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              List
+              <LayoutList size={18} aria-hidden />
             </button>
           </div>
           <Button onClick={handlePrint} variant="secondary" className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0">
