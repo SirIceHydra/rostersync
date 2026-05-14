@@ -936,7 +936,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="shrink-0 flex min-h-[2.75rem] items-center justify-center self-stretch pl-0.5 md:pl-2">
+        <div className="hidden md:flex shrink-0 min-h-[2.75rem] items-center justify-center self-stretch pl-0.5 md:pl-2">
           <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors touch-manipulation self-center" type="button" aria-label="Sign out">
             <LogOut size={20} />
           </button>
@@ -985,6 +985,21 @@ export default function App() {
                 </button>
               ))}
             </nav>
+            <div className="shrink-0 border-t border-slate-100 px-2 pt-2 pb-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  handleLogout();
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left text-sm font-black transition-colors touch-manipulation text-rose-700 hover:bg-rose-50 active:bg-rose-100"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                  <LogOut size={20} strokeWidth={2} aria-hidden />
+                </span>
+                <span>Sign out</span>
+              </button>
+            </div>
             <p className="px-4 py-3 text-[9px] font-bold text-slate-400 leading-relaxed border-t border-slate-100 shrink-0" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
               Home, Roster &amp; Requests stay at the bottom for quick access.
             </p>
