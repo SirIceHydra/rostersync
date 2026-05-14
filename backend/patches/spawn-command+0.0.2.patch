@@ -1,0 +1,18 @@
+diff --git a/node_modules/spawn-command/lib/spawn-command.js b/node_modules/spawn-command/lib/spawn-command.js
+index 24d56ab..b153642 100644
+--- a/node_modules/spawn-command/lib/spawn-command.js
++++ b/node_modules/spawn-command/lib/spawn-command.js
+@@ -1,10 +1,12 @@
+ var util = require('util');
++var path = require('path');
+ var spawn = require('child_process').spawn;
+ 
+ module.exports = function (command, options) {
+   var file, args;
+   if (process.platform === 'win32') {
+-    file = 'cmd.exe';
++    var systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
++    file = path.join(systemRoot, 'System32', 'cmd.exe');
+     args = ['/s', '/c', '"' + command + '"'];
+     options = util._extend({}, options);
+     options.windowsVerbatimArguments = true;
