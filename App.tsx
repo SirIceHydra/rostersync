@@ -1507,32 +1507,33 @@ const DashboardView: React.FC<{
           </div>
         </div>
         {isAdmin && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-nowrap gap-1 sm:gap-2 w-full sm:w-auto min-w-0">
             <Button
               onClick={onRegenerate}
               variant="secondary"
-              className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0"
+              className="flex-1 basis-0 min-w-0 justify-center !gap-1 sm:!gap-2 px-1.5 sm:px-3 min-h-11 text-[9px] sm:text-[10px] touch-manipulation uppercase tracking-tight sm:tracking-normal font-extrabold !whitespace-nowrap"
               disabled={loading || !roster}
             >
-              <History size={14} /> REGENERATE
+              <History size={13} className="shrink-0 sm:w-[14px] sm:h-[14px]" /> REGENERATE
             </Button>
-            <Button onClick={onGenerate} variant="secondary" className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0" disabled={loading}>
-              <Plus size={14} /> NEW DRAFT
+            <Button onClick={onGenerate} variant="secondary" className="flex-1 basis-0 min-w-0 justify-center !gap-1 sm:!gap-2 px-1.5 sm:px-3 min-h-11 text-[9px] sm:text-[10px] touch-manipulation uppercase tracking-tight sm:tracking-normal font-extrabold !whitespace-nowrap" disabled={loading}>
+              <Plus size={13} className="shrink-0 sm:w-[14px] sm:h-[14px]" /> NEW DRAFT
             </Button>
             {roster && roster.status === 'DRAFT' && (
-              <Button onClick={onPublish} variant="success" className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0" disabled={loading}>
-                <ShieldCheck size={14} /> PUBLISH
+              <Button onClick={onPublish} variant="success" className="flex-1 basis-0 min-w-0 justify-center !gap-1 sm:!gap-2 px-1.5 sm:px-3 min-h-11 text-[9px] sm:text-[10px] touch-manipulation uppercase tracking-tight sm:tracking-normal font-extrabold !whitespace-nowrap" disabled={loading}>
+                <ShieldCheck size={13} className="shrink-0 sm:w-[14px] sm:h-[14px]" /> PUBLISH
               </Button>
             )}
             {roster && roster.status === 'FINAL' && onUnpublish && (
               <Button
                 onClick={onUnpublish}
                 variant="secondary"
-                className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0 text-amber-700 border-amber-200 hover:bg-amber-50"
+                className="flex-1 basis-0 min-w-0 justify-center !gap-1 sm:!gap-2 px-1.5 sm:px-3 min-h-11 text-[9px] sm:text-[10px] touch-manipulation shrink-0 text-amber-700 border-amber-200 hover:bg-amber-50 uppercase tracking-tight sm:tracking-normal font-extrabold !whitespace-nowrap"
                 disabled={loading}
                 title="Revert to draft — hides the roster from doctors until republished"
               >
-                Revert to draft
+                <span className="sm:hidden">Revert</span>
+                <span className="hidden sm:inline">Revert to draft</span>
               </Button>
             )}
           </div>
