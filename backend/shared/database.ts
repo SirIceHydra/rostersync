@@ -27,6 +27,7 @@ export interface DbClient {
   get(sql: string, params?: any[]): Promise<any>;
   all(sql: string, params?: any[]): Promise<any[]>;
   run(sql: string, params?: any[]): Promise<{ changes?: number; lastID?: string }>;
+  transaction<T>(fn: (db: DbClient) => Promise<T>): Promise<T>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -34,6 +35,10 @@ export interface DbClient {
 // ─────────────────────────────────────────────────────────────────────────────
 class TransactionDatabase implements DbClient {
   constructor(private client: PoolClient) {}
+
+  async transaction<T>(_fn: (db: DbClient) => Promise<T>): Promise<T> {
+    throw new Error('Nested transactions are not supported');
+  }
 
   async get(sql: string, params: any[] = []): Promise<any> {
     const { rows } = await this.client.query(toPositional(sql), params);

@@ -7,6 +7,11 @@ import { logger } from '../shared/logger.js';
 import { corsOrigin } from '../shared/corsOrigin.js';
 import dotenv from 'dotenv';
 import { initializeSubscriptionCheckout } from '../shared/paystack.js';
+import {
+  confirmDepartmentSubscription,
+  createPendingDepartmentSubscription,
+  getDepartmentSubscriptionStatus,
+} from '../shared/subscriptionService.js';
 import { z } from 'zod';
 
 dotenv.config();
@@ -331,6 +336,10 @@ const SubscribeInitializeSchema = z.object({
   planCode: z.string().min(1),
 });
 
+const SubscribeConfirmSchema = z.object({
+  reference: z.string().min(1),
+});
+
 app.get('/api/billing/plans', authMiddleware, adminOnly, withDept, async (_req, res) => {
   try {
     const rows = await db.all(
@@ -415,15 +424,57 @@ app.post('/api/billing/subscribe/initialize', authMiddleware, adminOnly, withDep
       },
     });
 
+    const subscriptionId = await createPendingDepartmentSubscription(db, {
+      departmentId,
+      planId: planRow.id,
+      subscribedByUserId: user.userId,
+      checkoutReference: data.reference,
+    });
+
     res.json({
       accessCode: data.access_code,
       authorizationUrl: data.authorization_url,
       reference: data.reference,
       planCode: planRow.paystack_plan_code,
+      subscriptionId,
     });
   } catch (error: any) {
     logger.error({ err: error }, 'Initialize subscription error');
     res.status(502).json({ error: error.message || 'Could not start checkout' });
+  }
+});
+
+app.post('/api/billing/subscribe/confirm', authMiddleware, adminOnly, withDept, async (req, res) => {
+  try {
+    const parsed = SubscribeConfirmSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'reference is required' });
+    }
+
+    const user = (req as any).user;
+    const departmentId = (req as any).departmentId as string;
+
+    const result = await confirmDepartmentSubscription(db, {
+      departmentId,
+      reference: parsed.data.reference,
+      userId: user.userId,
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    logger.error({ err: error }, 'Confirm subscription error');
+    res.status(400).json({ error: error.message || 'Could not confirm subscription' });
+  }
+});
+
+app.get('/api/billing/status', authMiddleware, withDept, async (req, res) => {
+  try {
+    const departmentId = (req as any).departmentId as string;
+    const status = await getDepartmentSubscriptionStatus(db, departmentId);
+    res.json(status);
+  } catch (error: any) {
+    logger.error({ err: error }, 'Subscription status error');
+    res.status(500).json({ error: 'Could not load subscription status' });
   }
 });
 

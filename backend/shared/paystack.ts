@@ -21,6 +21,35 @@ export type PaystackInitializeData = {
   reference: string;
 };
 
+export type PaystackVerifyTransaction = {
+  status: string;
+  reference: string;
+  amount: number;
+  paid_at?: string;
+  paidAt?: string;
+  customer: {
+    customer_code: string;
+    email: string;
+  };
+  authorization?: {
+    authorization_code: string;
+  };
+  metadata?: string | Record<string, unknown>;
+  plan?: { plan_code?: string; name?: string } | null;
+};
+
+export type PaystackSubscription = {
+  subscription_code: string;
+  status: string;
+  amount: number;
+  next_payment_date?: string;
+  createdAt?: string;
+  created_at?: string;
+  customer: { customer_code: string };
+  plan: { plan_code: string; name?: string; interval?: string };
+  authorization?: { authorization_code: string };
+};
+
 function secretKey(): string {
   const key = process.env.PAYSTACK_SECRET_KEY?.trim();
   if (!key) throw new Error('Paystack is not configured (PAYSTACK_SECRET_KEY)');
@@ -72,4 +101,18 @@ export async function initializeSubscriptionCheckout(input: {
       ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
     }),
   });
+}
+
+export async function verifyTransaction(reference: string): Promise<PaystackVerifyTransaction> {
+  return paystackFetch<PaystackVerifyTransaction>(
+    `/transaction/verify/${encodeURIComponent(reference.trim())}`
+  );
+}
+
+export async function listCustomerSubscriptions(customerCode: string): Promise<PaystackSubscription[]> {
+  const data = await paystackFetch<PaystackSubscription[] | { subscriptions?: PaystackSubscription[] }>(
+    `/subscription?customer=${encodeURIComponent(customerCode)}`
+  );
+  if (Array.isArray(data)) return data;
+  return (data as { subscriptions?: PaystackSubscription[] }).subscriptions ?? [];
 }

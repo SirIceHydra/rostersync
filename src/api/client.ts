@@ -371,10 +371,40 @@ class ApiClient {
       authorizationUrl: string;
       reference: string;
       planCode: string;
+      subscriptionId: string;
     }>('/api/billing/subscribe/initialize', {
       method: 'POST',
       body: JSON.stringify({ planCode }),
     });
+  }
+
+  async confirmSubscription(reference: string) {
+    return this.request<{
+      subscriptionId: string;
+      status: string;
+      isEntitled: boolean;
+      paystackSubscriptionCode: string | null;
+    }>('/api/billing/subscribe/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ reference }),
+    });
+  }
+
+  async getBillingStatus() {
+    return this.request<{
+      hasSubscription: boolean;
+      isEntitled: boolean;
+      subscription: {
+        id: string;
+        status: string;
+        planCode: string;
+        planName: string;
+        billingInterval: string;
+        currentPeriodEnd: number | null;
+        nextPaymentAt: number | null;
+        paystackSubscriptionCode: string | null;
+      } | null;
+    }>('/api/billing/status');
   }
 
   async updateFairnessSettings(settings: {
