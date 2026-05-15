@@ -12,9 +12,10 @@
     "dev:all": "concurrently -n backend,frontend -c cyan,magenta \"npm run dev:backend\" \"npm run dev:frontend\""
   },
   "dependencies": {
-    "react-dom": "^19.2.3",
+    "@paystack/inline-js": "^2.22.8",
     "lucide-react": "^0.562.0",
-    "react": "^19.2.3"
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
