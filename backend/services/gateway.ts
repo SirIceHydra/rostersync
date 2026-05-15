@@ -27,7 +27,7 @@ app.use(cors({ origin: corsOrigin(), credentials: true }));
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', express.json(), (_req, res) => {
-  res.json({ status: 'ok', services: ['auth', 'roster', 'request', 'user', 'analytics'] });
+  res.json({ status: 'ok', services: ['auth', 'roster', 'request', 'user', 'analytics', 'billing'] });
 });
 
 // ── Proxy factory ─────────────────────────────────────────────────────────────
@@ -49,6 +49,7 @@ app.use('/api/auth',      createProxyMiddleware(createProxy(Number(process.env.A
 app.use('/api/rosters',   createProxyMiddleware(createProxy(Number(process.env.ROSTER_SERVICE_PORT)    || 4002)));
 app.use('/api/requests',  createProxyMiddleware(createProxy(Number(process.env.REQUEST_SERVICE_PORT)   || 4003)));
 app.use('/api/users',     createProxyMiddleware(createProxy(Number(process.env.USER_SERVICE_PORT)      || 4004)));
+app.use('/api/billing',   createProxyMiddleware(createProxy(Number(process.env.USER_SERVICE_PORT)      || 4004)));
 app.use('/api/analytics', createProxyMiddleware(createProxy(Number(process.env.ANALYTICS_SERVICE_PORT) || 4005)));
 
 app.listen(PORT, () => {

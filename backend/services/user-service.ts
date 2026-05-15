@@ -6,6 +6,7 @@ import { getPublishedYearRollupForDepartment, normalizeFairnessHistoryMode, type
 import { logger } from '../shared/logger.js';
 import { corsOrigin } from '../shared/corsOrigin.js';
 import dotenv from 'dotenv';
+import { fetchPlan, initializeSubscriptionCheckout, planCode } from '../shared/paystack.js';
 
 dotenv.config();
 
@@ -321,6 +322,50 @@ app.patch('/api/users/:id', authMiddleware, adminOnly, async (req, res) => {
   } catch (error: any) {
     logger.error({ err: error }, 'Update user error');
     res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// ── Billing (Paystack subscriptions) ─────────────────────────────────────────
+app.get('/api/billing/plan', authMiddleware, adminOnly, withDept, async (_req, res) => {
+  try {
+    const plan = await fetchPlan();
+    res.json({
+      planCode: plan.plan_code,
+      name: plan.name,
+      amount: plan.amount,
+      currency: plan.currency,
+      interval: plan.interval,
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Fetch Paystack plan error');
+    res.status(502).json({ error: error.message || 'Could not load subscription plan' });
+  }
+});
+
+app.post('/api/billing/subscribe/initialize', authMiddleware, adminOnly, withDept, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const departmentId = (req as any).departmentId as string;
+    const reference = `rs_sub_${departmentId.replace(/-/g, '').slice(0, 12)}_${Date.now()}`;
+
+    const data = await initializeSubscriptionCheckout({
+      email: user.email,
+      reference,
+      metadata: {
+        department_id: departmentId,
+        user_id: user.userId,
+        plan_code: planCode(),
+      },
+    });
+
+    res.json({
+      accessCode: data.access_code,
+      authorizationUrl: data.authorization_url,
+      reference: data.reference,
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Initialize subscription error');
+    res.status(502).json({ error: error.message || 'Could not start checkout' });
   }
 });
 

@@ -349,6 +349,24 @@ class ApiClient {
     }>('/api/analytics/fairness-settings');
   }
 
+  async getBillingPlan() {
+    return this.request<{
+      planCode: string;
+      name: string;
+      amount: number;
+      currency: string;
+      interval: string;
+    }>('/api/billing/plan');
+  }
+
+  async initializeSubscription() {
+    return this.request<{
+      accessCode: string;
+      authorizationUrl: string;
+      reference: string;
+    }>('/api/billing/subscribe/initialize', { method: 'POST' });
+  }
+
   async updateFairnessSettings(settings: {
     hourLimit: number;
     weekendLimit: number;
