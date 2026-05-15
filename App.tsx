@@ -40,6 +40,7 @@ import {
   CircleDashed,
   CalendarCheck,
   LayoutList,
+  CreditCard,
 } from 'lucide-react';
 
 // --- Production UI Components ---
@@ -49,13 +50,14 @@ import { Badge } from './src/components/Badge';
 import { RosterPrintSheet } from './src/components/RosterPrintSheet';
 import { RosterHistoryView } from './src/components/RosterHistoryView';
 import { MyScheduleView } from './src/components/MyScheduleView';
+import { SubscriptionView } from './src/components/SubscriptionView';
 import {
   mergeApprovedForCalendar,
   spanCalendarMonths,
   type ApprovedScheduleMarker,
 } from './src/utils/scheduleRequestsMerge';
 
-type AppShellView = 'DASHBOARD' | 'ROSTER' | 'ANALYTICS' | 'REQUESTS' | 'DOCTORS' | 'TUNING' | 'ARCHIVE' | 'MY_SCHEDULE';
+type AppShellView = 'DASHBOARD' | 'ROSTER' | 'ANALYTICS' | 'REQUESTS' | 'DOCTORS' | 'TUNING' | 'ARCHIVE' | 'MY_SCHEDULE' | 'SUBSCRIPTION';
 
 // --- Join Department (user logged in but has no department) ---
 function JoinDepartmentView(props: {
@@ -803,6 +805,7 @@ export default function App() {
         { view: 'DOCTORS', label: 'Staff', Icon: Users },
         { view: 'TUNING', label: 'Balance', Icon: SlidersHorizontal },
         { view: 'ARCHIVE', label: 'Past rosters', Icon: Archive },
+        { view: 'SUBSCRIPTION', label: 'Subscription', Icon: CreditCard },
       ]
     : [
         { view: 'DASHBOARD', label: 'Home', Icon: House },
@@ -812,6 +815,7 @@ export default function App() {
         { view: 'TUNING', label: 'Balance', Icon: SlidersHorizontal },
         { view: 'REQUESTS', label: 'Requests', Icon: AlertCircle },
         { view: 'ARCHIVE', label: 'Past rosters', Icon: Archive },
+        { view: 'SUBSCRIPTION', label: 'Subscription', Icon: CreditCard },
       ];
 
   return (
@@ -1131,6 +1135,12 @@ export default function App() {
             requests={requests}
           />
         )}
+        {view === 'SUBSCRIPTION' && (
+          <SubscriptionView
+            currentUser={currentUser}
+            departmentName={currentDepartment?.name || currentDepartment?.code}
+          />
+        )}
       </main>
 
       <nav
@@ -1146,6 +1156,7 @@ export default function App() {
           )}
           <TabItem active={view === 'ROSTER'} icon={<Calendar size={20} />} label="Roster" onClick={() => goNav('ROSTER')} />
           <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={20} />} label="Requests" onClick={() => goNav('REQUESTS')} />
+          <TabItem active={view === 'SUBSCRIPTION'} icon={<CreditCard size={20} />} label="Plan" onClick={() => goNav('SUBSCRIPTION')} />
         </div>
 
         {/* md+: full tab bar */}
@@ -1158,6 +1169,7 @@ export default function App() {
             <TabItem active={view === 'DOCTORS'} icon={<Users size={19} />} label="Staff" onClick={() => goNav('DOCTORS')} />
             <TabItem active={view === 'TUNING'} icon={<SlidersHorizontal size={19} />} label="Balance" onClick={() => goNav('TUNING')} />
             <TabItem active={view === 'ARCHIVE'} icon={<Archive size={19} />} label="Past" onClick={() => goNav('ARCHIVE')} />
+            <TabItem active={view === 'SUBSCRIPTION'} icon={<CreditCard size={19} />} label="Plan" onClick={() => goNav('SUBSCRIPTION')} />
           </div>
         ) : (
           <div className="hidden md:flex flex-row justify-around items-stretch w-full py-2 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]">
@@ -1166,6 +1178,7 @@ export default function App() {
             <TabItem active={view === 'ROSTER'} icon={<Calendar size={19} />} label="Roster" onClick={() => goNav('ROSTER')} />
             <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={19} />} label="Requests" onClick={() => goNav('REQUESTS')} />
             <TabItem active={view === 'ARCHIVE'} icon={<Archive size={19} />} label="Past" onClick={() => goNav('ARCHIVE')} />
+            <TabItem active={view === 'SUBSCRIPTION'} icon={<CreditCard size={19} />} label="Plan" onClick={() => goNav('SUBSCRIPTION')} />
           </div>
         )}
       </nav>
