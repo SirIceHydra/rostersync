@@ -6,7 +6,8 @@ import { getPublishedYearRollupForDepartment, normalizeFairnessHistoryMode, type
 import { logger } from '../shared/logger.js';
 import { corsOrigin } from '../shared/corsOrigin.js';
 import dotenv from 'dotenv';
-import { fetchPlan, initializeSubscriptionCheckout, planCode } from '../shared/paystack.js';
+import { initializeSubscriptionCheckout } from '../shared/paystack.js';
+import { z } from 'zod';
 
 dotenv.config();
 
@@ -326,35 +327,91 @@ app.patch('/api/users/:id', authMiddleware, adminOnly, async (req, res) => {
 });
 
 // ── Billing (Paystack subscriptions) ─────────────────────────────────────────
-app.get('/api/billing/plan', authMiddleware, adminOnly, withDept, async (_req, res) => {
+const SubscribeInitializeSchema = z.object({
+  planCode: z.string().min(1),
+});
+
+app.get('/api/billing/plans', authMiddleware, adminOnly, withDept, async (_req, res) => {
   try {
-    const plan = await fetchPlan();
+    const rows = await db.all(
+      `SELECT id, slug, paystack_plan_code, name, description, billing_interval,
+              amount_cents, currency, display_order
+       FROM subscription_plans
+       WHERE is_active = TRUE
+       ORDER BY display_order ASC, name ASC`
+    );
     res.json({
-      planCode: plan.plan_code,
-      name: plan.name,
-      amount: plan.amount,
-      currency: plan.currency,
-      interval: plan.interval,
+      plans: rows.map((r: any) => ({
+        id: r.id,
+        slug: r.slug,
+        planCode: r.paystack_plan_code,
+        name: r.name,
+        description: r.description,
+        amount: r.amount_cents,
+        currency: r.currency,
+        interval: r.billing_interval,
+        displayOrder: r.display_order,
+      })),
     });
   } catch (error: any) {
-    logger.error({ err: error }, 'Fetch Paystack plan error');
-    res.status(502).json({ error: error.message || 'Could not load subscription plan' });
+    logger.error({ err: error }, 'List subscription plans error');
+    res.status(500).json({ error: 'Could not load subscription plans' });
+  }
+});
+
+/** @deprecated Use GET /api/billing/plans */
+app.get('/api/billing/plan', authMiddleware, adminOnly, withDept, async (_req, res) => {
+  try {
+    const row = await db.get(
+      `SELECT id, slug, paystack_plan_code, name, description, billing_interval,
+              amount_cents, currency, display_order
+       FROM subscription_plans
+       WHERE is_active = TRUE
+       ORDER BY display_order ASC
+       LIMIT 1`
+    );
+    if (!row) return res.status(404).json({ error: 'No subscription plans configured' });
+    res.json({
+      planCode: row.paystack_plan_code,
+      name: row.name,
+      amount: row.amount_cents,
+      currency: row.currency,
+      interval: row.billing_interval,
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Fetch subscription plan error');
+    res.status(500).json({ error: 'Could not load subscription plan' });
   }
 });
 
 app.post('/api/billing/subscribe/initialize', authMiddleware, adminOnly, withDept, async (req, res) => {
   try {
+    const parsed = SubscribeInitializeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'planCode is required' });
+    }
+
+    const planRow = await db.get(
+      'SELECT id, paystack_plan_code FROM subscription_plans WHERE paystack_plan_code = ? AND is_active = TRUE',
+      [parsed.data.planCode]
+    );
+    if (!planRow) {
+      return res.status(400).json({ error: 'Unknown or inactive subscription plan' });
+    }
+
     const user = (req as any).user;
     const departmentId = (req as any).departmentId as string;
     const reference = `rs_sub_${departmentId.replace(/-/g, '').slice(0, 12)}_${Date.now()}`;
 
     const data = await initializeSubscriptionCheckout({
       email: user.email,
+      planCode: planRow.paystack_plan_code,
       reference,
       metadata: {
         department_id: departmentId,
         user_id: user.userId,
-        plan_code: planCode(),
+        plan_id: planRow.id,
+        plan_code: planRow.paystack_plan_code,
       },
     });
 
@@ -362,6 +419,7 @@ app.post('/api/billing/subscribe/initialize', authMiddleware, adminOnly, withDep
       accessCode: data.access_code,
       authorizationUrl: data.authorization_url,
       reference: data.reference,
+      planCode: planRow.paystack_plan_code,
     });
   } catch (error: any) {
     logger.error({ err: error }, 'Initialize subscription error');

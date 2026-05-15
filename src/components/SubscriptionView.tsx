@@ -8,11 +8,15 @@ import { api } from '../api/client';
 import { openPaystackCheckout } from '../lib/paystackCheckout';
 
 type BillingPlan = {
+  id: string;
+  slug: string | null;
   planCode: string;
   name: string;
+  description: string | null;
   amount: number;
   currency: string;
   interval: string;
+  displayOrder: number;
 };
 
 function formatPlanAmount(amount: number, currency: string): string {
@@ -37,42 +41,59 @@ function formatInterval(interval: string): string {
   return map[interval] ?? interval;
 }
 
+function intervalLabel(interval: string): string {
+  const labels: Record<string, string> = {
+    monthly: 'Monthly',
+    biannually: 'Every 6 months',
+    annually: 'Annual',
+  };
+  return labels[interval] ?? formatInterval(interval);
+}
+
 export const SubscriptionView: React.FC<{
   currentUser: User;
   departmentName?: string;
 }> = ({ currentUser, departmentName }) => {
   const isAdmin = currentUser.role === Role.ADMIN;
-  const [plan, setPlan] = useState<BillingPlan | null>(null);
-  const [planLoading, setPlanLoading] = useState(isAdmin);
-  const [planError, setPlanError] = useState<string | null>(null);
+  const [plans, setPlans] = useState<BillingPlan[]>([]);
+  const [selectedPlanCode, setSelectedPlanCode] = useState<string | null>(null);
+  const [plansLoading, setPlansLoading] = useState(isAdmin);
+  const [plansError, setPlansError] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [subscribed, setSubscribed] = useState(false);
 
-  const loadPlan = useCallback(async () => {
+  const loadPlans = useCallback(async () => {
     if (!isAdmin) return;
-    setPlanLoading(true);
-    setPlanError(null);
+    setPlansLoading(true);
+    setPlansError(null);
     try {
-      const data = await api.getBillingPlan();
-      setPlan(data);
+      const { plans: list } = await api.getBillingPlans();
+      setPlans(list);
+      setSelectedPlanCode((prev) => {
+        if (prev && list.some((p) => p.planCode === prev)) return prev;
+        return list[0]?.planCode ?? null;
+      });
     } catch (e: unknown) {
-      setPlan(null);
-      setPlanError(e instanceof Error ? e.message : 'Could not load plan');
+      setPlans([]);
+      setPlansError(e instanceof Error ? e.message : 'Could not load plans');
     } finally {
-      setPlanLoading(false);
+      setPlansLoading(false);
     }
   }, [isAdmin]);
 
   useEffect(() => {
-    void loadPlan();
-  }, [loadPlan]);
+    void loadPlans();
+  }, [loadPlans]);
+
+  const selectedPlan = plans.find((p) => p.planCode === selectedPlanCode) ?? null;
 
   const handleSubscribe = async () => {
+    if (!selectedPlanCode) return;
     setCheckoutError(null);
     setCheckoutLoading(true);
     try {
-      const { accessCode } = await api.initializeSubscription();
+      const { accessCode } = await api.initializeSubscription(selectedPlanCode);
       openPaystackCheckout({
         accessCode,
         onSuccess: () => {
@@ -99,37 +120,68 @@ export const SubscriptionView: React.FC<{
 
       {isAdmin ? (
         <Card className="p-6 space-y-5">
-          {planLoading && (
+          {plansLoading && (
             <div className="flex items-center justify-center gap-2 py-8 text-slate-500">
               <Loader2 className="w-5 h-5 animate-spin text-indigo-600" aria-hidden />
-              <span className="text-xs font-bold">Loading plan…</span>
+              <span className="text-xs font-bold">Loading plans…</span>
             </div>
           )}
 
-          {!planLoading && planError && (
+          {!plansLoading && plansError && (
             <div className="rs-alert rs-alert--danger" role="alert">
-              <div className="rs-alert-body text-sm font-semibold">{planError}</div>
-              <Button variant="secondary" className="mt-3" onClick={() => void loadPlan()}>
+              <div className="rs-alert-body text-sm font-semibold">{plansError}</div>
+              <Button variant="secondary" className="mt-3" onClick={() => void loadPlans()}>
                 Try again
               </Button>
             </div>
           )}
 
-          {!planLoading && !planError && plan && (
+          {!plansLoading && !plansError && plans.length > 0 && (
             <>
-              <div className="flex items-start gap-4">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-                  <CreditCard size={24} strokeWidth={2} aria-hidden />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-black text-slate-900">{plan.name}</p>
-                  <p className="text-xs font-semibold text-slate-500 mt-1">
-                    {formatPlanAmount(plan.amount, plan.currency)} per {formatInterval(plan.interval)}
-                  </p>
-                  <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">
-                    Billed to {currentUser.email}
-                  </p>
-                </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-500 leading-relaxed">
+                  Choose a billing term for your department. All doctors in this department use RosterSync at no extra cost.
+                </p>
+                <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">
+                  Billed to {currentUser.email}
+                </p>
+              </div>
+
+              <div className="space-y-2" role="radiogroup" aria-label="Subscription plan">
+                {plans.map((plan) => {
+                  const selected = plan.planCode === selectedPlanCode;
+                  return (
+                    <button
+                      key={plan.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setSelectedPlanCode(plan.planCode)}
+                      className={`w-full text-left rounded-2xl border p-4 transition-colors touch-manipulation ${
+                        selected
+                          ? 'border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200'
+                          : 'border-slate-200 bg-white hover:border-slate-300 active:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-slate-900">{plan.name}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-0.5">
+                            {intervalLabel(plan.interval)}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-black text-indigo-700">
+                            {formatPlanAmount(plan.amount, plan.currency)}
+                          </p>
+                          <p className="text-[10px] font-semibold text-slate-500">
+                            per {formatInterval(plan.interval)}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
               {subscribed ? (
@@ -141,10 +193,12 @@ export const SubscriptionView: React.FC<{
                 </div>
               ) : (
                 <>
-                  <p className="text-xs font-semibold text-slate-500 leading-relaxed">
-                    Subscribe this department to RosterSync. You&apos;ll complete payment securely in Paystack, then billing renews each{' '}
-                    {formatInterval(plan.interval)}.
-                  </p>
+                  {selectedPlan && (
+                    <p className="text-xs font-semibold text-slate-500 leading-relaxed">
+                      You&apos;ll pay {formatPlanAmount(selectedPlan.amount, selectedPlan.currency)} per{' '}
+                      {formatInterval(selectedPlan.interval)} via Paystack.
+                    </p>
+                  )}
                   {checkoutError && (
                     <div className="rs-alert rs-alert--danger" role="alert">
                       <div className="rs-alert-body text-sm font-semibold">{checkoutError}</div>
@@ -153,7 +207,7 @@ export const SubscriptionView: React.FC<{
                   <Button
                     variant="primary"
                     className="w-full py-3.5"
-                    disabled={checkoutLoading}
+                    disabled={checkoutLoading || !selectedPlanCode}
                     onClick={() => void handleSubscribe()}
                   >
                     {checkoutLoading ? (
@@ -168,6 +222,10 @@ export const SubscriptionView: React.FC<{
                 </>
               )}
             </>
+          )}
+
+          {!plansLoading && !plansError && plans.length === 0 && (
+            <p className="text-xs font-semibold text-slate-500 text-center py-4">No subscription plans available.</p>
           )}
         </Card>
       ) : (

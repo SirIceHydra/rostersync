@@ -27,10 +27,10 @@ function secretKey(): string {
   return key;
 }
 
-export function planCode(): string {
-  const code = process.env.PAYSTACK_PLAN_CODE?.trim();
-  if (!code) throw new Error('Paystack plan is not configured (PAYSTACK_PLAN_CODE)');
-  return code;
+export function requirePlanCode(code: string | undefined): string {
+  const trimmed = code?.trim();
+  if (!trimmed) throw new Error('Plan code is required');
+  return trimmed;
 }
 
 async function paystackFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -49,18 +49,18 @@ async function paystackFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return body.data;
 }
 
-export async function fetchPlan(code?: string): Promise<PaystackPlan> {
-  const plan = code?.trim() || planCode();
-  return paystackFetch<PaystackPlan>(`/plan/${encodeURIComponent(plan)}`);
+export async function fetchPlan(planCode: string): Promise<PaystackPlan> {
+  return paystackFetch<PaystackPlan>(`/plan/${encodeURIComponent(requirePlanCode(planCode))}`);
 }
 
 export async function initializeSubscriptionCheckout(input: {
   email: string;
+  planCode: string;
   reference: string;
   metadata?: Record<string, string>;
   callbackUrl?: string;
 }): Promise<PaystackInitializeData> {
-  const plan = await fetchPlan();
+  const plan = await fetchPlan(input.planCode);
   return paystackFetch<PaystackInitializeData>('/transaction/initialize', {
     method: 'POST',
     body: JSON.stringify({

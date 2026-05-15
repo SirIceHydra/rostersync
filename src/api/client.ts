@@ -349,22 +349,32 @@ class ApiClient {
     }>('/api/analytics/fairness-settings');
   }
 
-  async getBillingPlan() {
+  async getBillingPlans() {
     return this.request<{
-      planCode: string;
-      name: string;
-      amount: number;
-      currency: string;
-      interval: string;
-    }>('/api/billing/plan');
+      plans: {
+        id: string;
+        slug: string | null;
+        planCode: string;
+        name: string;
+        description: string | null;
+        amount: number;
+        currency: string;
+        interval: string;
+        displayOrder: number;
+      }[];
+    }>('/api/billing/plans');
   }
 
-  async initializeSubscription() {
+  async initializeSubscription(planCode: string) {
     return this.request<{
       accessCode: string;
       authorizationUrl: string;
       reference: string;
-    }>('/api/billing/subscribe/initialize', { method: 'POST' });
+      planCode: string;
+    }>('/api/billing/subscribe/initialize', {
+      method: 'POST',
+      body: JSON.stringify({ planCode }),
+    });
   }
 
   async updateFairnessSettings(settings: {

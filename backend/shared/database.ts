@@ -4,6 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Pool, type PoolClient } from 'pg';
 import { fetchPlan } from './paystack.js';
+import { getSubscriptionPlanCatalog } from './subscriptionCatalog.js';
+import type { SubscriptionBillingInterval } from './subscriptionTypes.js';
 
 /** Resolve backend/.env no matter which working directory started the process */
 const _backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -384,49 +386,66 @@ export class Database implements DbClient {
     console.log('PostgreSQL schema initialised successfully');
   }
 
-  /** Upsert default plan from PAYSTACK_PLAN_CODE (and Paystack API when configured). */
+  /** Upsert all catalog plans (monthly, biannual, annual) from Paystack when configured. */
   private async seedSubscriptionPlans(): Promise<void> {
-    const paystackPlanCode = process.env.PAYSTACK_PLAN_CODE?.trim();
-    if (!paystackPlanCode) return;
+    for (const entry of getSubscriptionPlanCatalog()) {
+      await this.upsertSubscriptionPlanOffering(entry);
+    }
+  }
 
-    const existing = await this.get(
-      'SELECT id FROM subscription_plans WHERE paystack_plan_code = ?',
-      [paystackPlanCode]
-    );
-    if (existing) return;
-
+  private async upsertSubscriptionPlanOffering(entry: {
+    slug: string;
+    paystackPlanCode: string;
+    displayOrder: number;
+    fallbackName: string;
+    fallbackInterval: SubscriptionBillingInterval;
+  }): Promise<void> {
     const now = Date.now();
-    let name = 'RosterSync';
-    let billingInterval = 'monthly';
+    let name = entry.fallbackName;
+    let billingInterval = entry.fallbackInterval;
     let amountCents = 0;
     let currency = 'ZAR';
-    let invoiceLimit: number | null = null;
 
     try {
-      const plan = await fetchPlan(paystackPlanCode);
+      const plan = await fetchPlan(entry.paystackPlanCode);
       name = plan.name;
-      billingInterval = plan.interval;
+      billingInterval = plan.interval as SubscriptionBillingInterval;
       amountCents = plan.amount;
       currency = plan.currency;
     } catch {
-      // Offline or missing secret — insert stub; billing sync can refresh later.
+      // Offline or missing secret — use fallbacks; Paystack sync can refresh later.
     }
 
-    const slug = paystackPlanCode.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const existing = await this.get(
+      'SELECT id FROM subscription_plans WHERE paystack_plan_code = ?',
+      [entry.paystackPlanCode]
+    );
+
+    if (existing) {
+      await this.run(
+        `UPDATE subscription_plans SET
+          slug = ?, name = ?, billing_interval = ?, amount_cents = ?, currency = ?,
+          display_order = ?, is_active = TRUE, updated_at = ?
+         WHERE id = ?`,
+        [entry.slug, name, billingInterval, amountCents, currency, entry.displayOrder, now, existing.id]
+      );
+      return;
+    }
+
     await this.run(
       `INSERT INTO subscription_plans (
         id, slug, paystack_plan_code, name, billing_interval, amount_cents, currency,
         invoice_limit, is_active, display_order, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, 0, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, TRUE, ?, ?, ?)`,
       [
         crypto.randomUUID(),
-        slug || null,
-        paystackPlanCode,
+        entry.slug,
+        entry.paystackPlanCode,
         name,
         billingInterval,
         amountCents,
         currency,
-        invoiceLimit,
+        entry.displayOrder,
         now,
         now,
       ]
