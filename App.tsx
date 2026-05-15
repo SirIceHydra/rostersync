@@ -1156,7 +1156,6 @@ export default function App() {
           )}
           <TabItem active={view === 'ROSTER'} icon={<Calendar size={20} />} label="Roster" onClick={() => goNav('ROSTER')} />
           <TabItem active={view === 'REQUESTS'} icon={<AlertCircle size={20} />} label="Requests" onClick={() => goNav('REQUESTS')} />
-          <TabItem active={view === 'SUBSCRIPTION'} icon={<CreditCard size={20} />} label="Plan" onClick={() => goNav('SUBSCRIPTION')} />
         </div>
 
         {/* md+: full tab bar */}
