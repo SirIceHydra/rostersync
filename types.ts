@@ -110,3 +110,35 @@ export interface FairnessReport {
   metrics: FairnessMetric[];
   unassignedDays: string[]; // Days where no eligible doctor could be found (requires manual assignment)
 }
+
+/** Sellable subscription term (monthly, annual, tier, etc.). */
+export type SubscriptionBillingInterval =
+  | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'biannually' | 'annually';
+
+export type DepartmentSubscriptionStatus =
+  | 'PENDING' | 'ACTIVE' | 'NON_RENEWING' | 'ATTENTION' | 'PAST_DUE'
+  | 'CANCELLED' | 'COMPLETED' | 'INCOMPLETE';
+
+export interface SubscriptionPlan {
+  id: string;
+  slug: string | null;
+  paystackPlanCode: string;
+  name: string;
+  description?: string | null;
+  billingInterval: SubscriptionBillingInterval;
+  amountCents: number;
+  currency: string;
+  isActive: boolean;
+}
+
+/** Current or historical department subscription (admin-paid; doctors inherit access). */
+export interface DepartmentSubscription {
+  id: string;
+  departmentId: string;
+  planId: string;
+  status: DepartmentSubscriptionStatus;
+  subscribedByUserId?: string | null;
+  currentPeriodEnd?: number | null;
+  nextPaymentAt?: number | null;
+  isEntitled: boolean;
+}

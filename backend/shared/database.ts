@@ -1,7 +1,9 @@
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Pool, type PoolClient } from 'pg';
+import { fetchPlan } from './paystack.js';
 
 /** Resolve backend/.env no matter which working directory started the process */
 const _backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -277,6 +279,96 @@ export class Database implements DbClient {
       )
     `);
 
+    // ── Billing: plan catalog + per-department subscriptions ─────────────────
+    // Admin pays; all doctors in the department inherit access via the active row.
+    // Multiple plan rows support different terms (monthly, annual, tiers, etc.).
+    await run(`
+      CREATE TABLE IF NOT EXISTS subscription_plans (
+        id                 TEXT    PRIMARY KEY,
+        slug               TEXT    UNIQUE,
+        paystack_plan_code TEXT    UNIQUE NOT NULL,
+        name               TEXT    NOT NULL,
+        description        TEXT,
+        billing_interval   TEXT    NOT NULL CHECK(billing_interval IN (
+          'hourly','daily','weekly','monthly','quarterly','biannually','annually'
+        )),
+        amount_cents       INTEGER NOT NULL,
+        currency           TEXT    NOT NULL DEFAULT 'ZAR',
+        invoice_limit      INTEGER,
+        is_active          BOOLEAN NOT NULL DEFAULT TRUE,
+        display_order      INTEGER NOT NULL DEFAULT 0,
+        created_at         BIGINT  NOT NULL,
+        updated_at         BIGINT  NOT NULL
+      )
+    `);
+
+    // One open row per department (ended_at IS NULL). History kept when plans change or cancel.
+    await run(`
+      CREATE TABLE IF NOT EXISTS department_subscriptions (
+        id                          TEXT    PRIMARY KEY,
+        department_id               TEXT    NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        plan_id                     TEXT    NOT NULL REFERENCES subscription_plans(id),
+        status                      TEXT    NOT NULL CHECK(status IN (
+          'PENDING','ACTIVE','NON_RENEWING','ATTENTION','PAST_DUE',
+          'CANCELLED','COMPLETED','INCOMPLETE'
+        )),
+        subscribed_by_user_id       TEXT    REFERENCES users(id),
+        paystack_subscription_code  TEXT    UNIQUE,
+        paystack_customer_code      TEXT,
+        paystack_authorization_code TEXT,
+        checkout_reference          TEXT,
+        current_period_start        BIGINT,
+        current_period_end          BIGINT,
+        next_payment_at             BIGINT,
+        ended_at                    BIGINT,
+        end_reason                  TEXT    CHECK(end_reason IS NULL OR end_reason IN (
+          'CHECKOUT_ABANDONED','CHECKOUT_FAILED','CANCELLED','COMPLETED',
+          'PLAN_CHANGED','REPLACED','EXPIRED'
+        )),
+        created_at                  BIGINT  NOT NULL,
+        updated_at                  BIGINT  NOT NULL
+      )
+    `);
+
+    // Webhook / audit log — optional payload for debugging and reconciliation.
+    await run(`
+      CREATE TABLE IF NOT EXISTS subscription_events (
+        id                        TEXT    PRIMARY KEY,
+        department_subscription_id TEXT   REFERENCES department_subscriptions(id) ON DELETE SET NULL,
+        department_id             TEXT    NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        event_type                TEXT    NOT NULL,
+        paystack_event_id         TEXT,
+        payload_json              TEXT,
+        created_at                BIGINT  NOT NULL
+      )
+    `);
+
+    await run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_department_subscriptions_current
+        ON department_subscriptions(department_id)
+        WHERE ended_at IS NULL
+    `);
+    await run(`
+      CREATE INDEX IF NOT EXISTS idx_department_subscriptions_dept_status
+        ON department_subscriptions(department_id, status)
+    `);
+    await run(`
+      CREATE INDEX IF NOT EXISTS idx_department_subscriptions_paystack_code
+        ON department_subscriptions(paystack_subscription_code)
+        WHERE paystack_subscription_code IS NOT NULL
+    `);
+    await run(`
+      CREATE INDEX IF NOT EXISTS idx_subscription_plans_active
+        ON subscription_plans(is_active, display_order)
+    `);
+    await run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_events_paystack
+        ON subscription_events(paystack_event_id)
+        WHERE paystack_event_id IS NOT NULL
+    `);
+
+    await this.seedSubscriptionPlans();
+
     // Performance indexes
     await run(`CREATE INDEX IF NOT EXISTS idx_shifts_roster_date       ON shifts(roster_id, date)`);
     await run(`CREATE INDEX IF NOT EXISTS idx_shifts_doctor             ON shifts(doctor_id)`);
@@ -290,5 +382,54 @@ export class Database implements DbClient {
     await run(`CREATE INDEX IF NOT EXISTS idx_users_email               ON users(email)`);
 
     console.log('PostgreSQL schema initialised successfully');
+  }
+
+  /** Upsert default plan from PAYSTACK_PLAN_CODE (and Paystack API when configured). */
+  private async seedSubscriptionPlans(): Promise<void> {
+    const paystackPlanCode = process.env.PAYSTACK_PLAN_CODE?.trim();
+    if (!paystackPlanCode) return;
+
+    const existing = await this.get(
+      'SELECT id FROM subscription_plans WHERE paystack_plan_code = ?',
+      [paystackPlanCode]
+    );
+    if (existing) return;
+
+    const now = Date.now();
+    let name = 'RosterSync';
+    let billingInterval = 'monthly';
+    let amountCents = 0;
+    let currency = 'ZAR';
+    let invoiceLimit: number | null = null;
+
+    try {
+      const plan = await fetchPlan(paystackPlanCode);
+      name = plan.name;
+      billingInterval = plan.interval;
+      amountCents = plan.amount;
+      currency = plan.currency;
+    } catch {
+      // Offline or missing secret — insert stub; billing sync can refresh later.
+    }
+
+    const slug = paystackPlanCode.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    await this.run(
+      `INSERT INTO subscription_plans (
+        id, slug, paystack_plan_code, name, billing_interval, amount_cents, currency,
+        invoice_limit, is_active, display_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, 0, ?, ?)`,
+      [
+        crypto.randomUUID(),
+        slug || null,
+        paystackPlanCode,
+        name,
+        billingInterval,
+        amountCents,
+        currency,
+        invoiceLimit,
+        now,
+        now,
+      ]
+    );
   }
 }
