@@ -336,6 +336,11 @@ export class Database implements DbClient {
         updated_at                  BIGINT  NOT NULL
       )
     `);
+    await run(`ALTER TABLE department_subscriptions ADD COLUMN IF NOT EXISTS card_brand TEXT`);
+    await run(`ALTER TABLE department_subscriptions ADD COLUMN IF NOT EXISTS card_last4 TEXT`);
+    await run(`ALTER TABLE department_subscriptions ADD COLUMN IF NOT EXISTS card_exp_month TEXT`);
+    await run(`ALTER TABLE department_subscriptions ADD COLUMN IF NOT EXISTS card_exp_year TEXT`);
+    await run(`ALTER TABLE department_subscriptions ADD COLUMN IF NOT EXISTS card_bank TEXT`);
 
     // Webhook / audit log — optional payload for debugging and reconciliation.
     await run(`

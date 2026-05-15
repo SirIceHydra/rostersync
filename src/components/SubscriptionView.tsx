@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CreditCard, Building2, Loader2, CheckCircle2 } from 'lucide-react';
+import { CreditCard, Building2, Loader2, CheckCircle2, ExternalLink } from 'lucide-react';
 import { Card } from './Card';
 import { Button } from './Button';
 import { Badge } from './Badge';
@@ -20,23 +20,10 @@ type BillingPlan = {
   displayOrder: number;
 };
 
-type BillingStatus = {
-  hasSubscription: boolean;
-  isEntitled: boolean;
-  subscription: {
-    id: string;
-    status: string;
-    planCode: string;
-    planName: string;
-    billingInterval: string;
-    currentPeriodEnd: number | null;
-    nextPaymentAt: number | null;
-    paystackSubscriptionCode: string | null;
-  } | null;
-};
+type BillingStatus = Awaited<ReturnType<typeof api.getBillingStatus>>;
 
-function formatPlanAmount(amount: number, currency: string): string {
-  const major = amount / 100;
+function formatPlanAmount(amountCents: number, currency: string): string {
+  const major = amountCents / 100;
   try {
     return new Intl.NumberFormat('en-ZA', { style: 'currency', currency }).format(major);
   } catch {
@@ -89,6 +76,14 @@ function statusLabel(status: string): string {
   return map[status] ?? status;
 }
 
+function formatCardLabel(pm: NonNullable<NonNullable<BillingStatus['subscription']>['paymentMethod']>): string {
+  const brand = pm.brand.charAt(0).toUpperCase() + pm.brand.slice(1).toLowerCase();
+  const exp =
+    pm.expMonth && pm.expYear ? ` · Exp ${pm.expMonth.padStart(2, '0')}/${pm.expYear.slice(-2)}` : '';
+  const bank = pm.bank ? ` · ${pm.bank}` : '';
+  return `${brand} •••• ${pm.last4}${exp}${bank}`;
+}
+
 export const SubscriptionView: React.FC<{
   currentUser: User;
   departmentName?: string;
@@ -96,28 +91,30 @@ export const SubscriptionView: React.FC<{
   const isAdmin = currentUser.role === Role.ADMIN;
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [selectedPlanCode, setSelectedPlanCode] = useState<string | null>(null);
-  const [plansLoading, setPlansLoading] = useState(isAdmin);
+  const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState<string | null>(null);
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [confirmSuccess, setConfirmSuccess] = useState(false);
+  const [manageLoading, setManageLoading] = useState(false);
+  const [manageError, setManageError] = useState<string | null>(null);
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
     try {
       const status = await api.getBillingStatus();
       setBillingStatus(status);
+      return status;
     } catch {
       setBillingStatus(null);
+      return null;
     } finally {
       setStatusLoading(false);
     }
   }, []);
 
   const loadPlans = useCallback(async () => {
-    if (!isAdmin) return;
     setPlansLoading(true);
     setPlansError(null);
     try {
@@ -133,22 +130,24 @@ export const SubscriptionView: React.FC<{
     } finally {
       setPlansLoading(false);
     }
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => {
-    void loadStatus();
-    void loadPlans();
-  }, [loadStatus, loadPlans]);
+    void (async () => {
+      const status = await loadStatus();
+      if (isAdmin && !status?.isEntitled) {
+        await loadPlans();
+      }
+    })();
+  }, [loadStatus, loadPlans, isAdmin]);
 
   const selectedPlan = plans.find((p) => p.planCode === selectedPlanCode) ?? null;
   const isEntitled = billingStatus?.isEntitled ?? false;
   const activeSub = billingStatus?.subscription ?? null;
-  const showCheckout = isAdmin && !isEntitled;
 
   const handleSubscribe = async () => {
     if (!selectedPlanCode) return;
     setCheckoutError(null);
-    setConfirmSuccess(false);
     setCheckoutLoading(true);
     try {
       const init = await api.initializeSubscription(selectedPlanCode);
@@ -160,7 +159,6 @@ export const SubscriptionView: React.FC<{
           try {
             const ref = transaction.reference ?? init.reference;
             await api.confirmSubscription(ref);
-            setConfirmSuccess(true);
             await loadStatus();
           } catch (e: unknown) {
             setCheckoutError(e instanceof Error ? e.message : 'Payment succeeded but confirmation failed');
@@ -173,6 +171,19 @@ export const SubscriptionView: React.FC<{
     } catch (e: unknown) {
       setCheckoutError(e instanceof Error ? e.message : 'Could not start checkout');
       setCheckoutLoading(false);
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    setManageError(null);
+    setManageLoading(true);
+    try {
+      const { link } = await api.getSubscriptionManageLink();
+      window.open(link, '_blank', 'noopener,noreferrer');
+    } catch (e: unknown) {
+      setManageError(e instanceof Error ? e.message : 'Could not open subscription management');
+    } finally {
+      setManageLoading(false);
     }
   };
 
@@ -190,46 +201,116 @@ export const SubscriptionView: React.FC<{
         <Card className="p-6">
           <div className="flex items-center justify-center gap-2 py-4 text-slate-500">
             <Loader2 className="w-5 h-5 animate-spin text-indigo-600" aria-hidden />
-            <span className="text-xs font-bold">Checking subscription…</span>
+            <span className="text-xs font-bold">Loading subscription…</span>
           </div>
         </Card>
       )}
 
       {!statusLoading && isEntitled && activeSub && (
-        <Card className="p-6 space-y-3 border-emerald-100 bg-emerald-50/40">
+        <Card className="p-6 space-y-5 border-emerald-100 bg-gradient-to-b from-emerald-50/50 to-white">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600" aria-hidden />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 space-y-1">
               <p className="text-sm font-black text-slate-900">{activeSub.planName}</p>
-              <p className="text-xs font-semibold text-slate-600 mt-1">
-                {intervalLabel(activeSub.billingInterval)} plan · {statusLabel(activeSub.status)}
+              <p className="text-xs font-semibold text-slate-600">
+                {intervalLabel(activeSub.billingInterval)} ·{' '}
+                {formatPlanAmount(activeSub.amountCents, activeSub.currency)} per{' '}
+                {formatInterval(activeSub.billingInterval)}
               </p>
-              {formatDate(activeSub.nextPaymentAt) && (
-                <p className="text-[10px] font-bold text-slate-500 mt-2 uppercase tracking-widest">
-                  Next payment {formatDate(activeSub.nextPaymentAt)}
-                </p>
-              )}
-              <div className="mt-3">
-                <Badge color="green">Department active</Badge>
+              <div className="pt-1">
+                <Badge color="green">{statusLabel(activeSub.status)}</Badge>
               </div>
-              {!isAdmin && (
-                <p className="text-xs font-semibold text-slate-500 mt-3 leading-relaxed">
-                  Your admin has subscribed this department. You can use RosterSync at no extra cost.
-                </p>
-              )}
             </div>
           </div>
-        </Card>
-      )}
 
-      {isAdmin ? (
-        <Card className="p-6 space-y-5">
-          {isEntitled && (
-            <p className="text-xs font-semibold text-slate-500 leading-relaxed">
-              To change billing term, choose a new plan below. Completing checkout will replace the current subscription.
+          <dl className="grid grid-cols-1 gap-3 text-xs">
+            {formatDate(activeSub.nextPaymentAt) && (
+              <div>
+                <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">Next payment</dt>
+                <dd className="font-semibold text-slate-800 mt-0.5">{formatDate(activeSub.nextPaymentAt)}</dd>
+              </div>
+            )}
+            {formatDate(activeSub.currentPeriodStart) && (
+              <div>
+                <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">Current period from</dt>
+                <dd className="font-semibold text-slate-800 mt-0.5">{formatDate(activeSub.currentPeriodStart)}</dd>
+              </div>
+            )}
+            <div>
+              <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">Plan code</dt>
+              <dd className="font-mono font-semibold text-slate-600 mt-0.5 text-[11px]">{activeSub.planCode}</dd>
+            </div>
+          </dl>
+
+          {isAdmin && activeSub.paymentMethod && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Payment method</p>
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                  <CreditCard size={20} aria-hidden />
+                </span>
+                <div>
+                  <p className="text-sm font-black text-slate-900">{formatCardLabel(activeSub.paymentMethod)}</p>
+                  <p className="text-[10px] font-semibold text-slate-500 mt-0.5">Charged via Paystack</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isAdmin && !activeSub.paymentMethod && (
+            <p className="text-xs font-semibold text-slate-500">
+              Card details will appear here after Paystack syncs your subscription.
             </p>
           )}
 
+          {!isAdmin && (
+            <p className="text-xs font-semibold text-slate-500 leading-relaxed">
+              Your department admin manages billing. You can use RosterSync at no extra cost.
+            </p>
+          )}
+
+          {isAdmin && (
+            <div className="space-y-2 pt-1">
+              {manageError && (
+                <div className="rs-alert rs-alert--danger" role="alert">
+                  <div className="rs-alert-body text-sm font-semibold">{manageError}</div>
+                </div>
+              )}
+              <Button
+                variant="secondary"
+                className="w-full py-3.5"
+                disabled={manageLoading}
+                onClick={() => void handleManageSubscription()}
+              >
+                {manageLoading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                    Opening…
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    Manage subscription
+                    <ExternalLink size={16} aria-hidden />
+                  </span>
+                )}
+              </Button>
+              <p className="text-[10px] font-semibold text-slate-400 text-center leading-relaxed">
+                Update your card, view invoices, or cancel on Paystack&apos;s secure page.
+              </p>
+            </div>
+          )}
+
+          {!isAdmin && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
+              <Building2 size={12} aria-hidden />
+              Included with your department
+            </span>
+          )}
+        </Card>
+      )}
+
+      {!statusLoading && isAdmin && !isEntitled && (
+        <Card className="p-6 space-y-5">
           {plansLoading && (
             <div className="flex items-center justify-center gap-2 py-8 text-slate-500">
               <Loader2 className="w-5 h-5 animate-spin text-indigo-600" aria-hidden />
@@ -246,7 +327,7 @@ export const SubscriptionView: React.FC<{
             </div>
           )}
 
-          {!plansLoading && !plansError && plans.length > 0 && showCheckout && (
+          {!plansLoading && !plansError && plans.length > 0 && (
             <>
               <div>
                 <p className="text-xs font-semibold text-slate-500 leading-relaxed">
@@ -294,131 +375,53 @@ export const SubscriptionView: React.FC<{
                 })}
               </div>
 
-              {confirmSuccess && (
-                <div className="rs-alert rs-alert--success flex items-start gap-2" role="status">
-                  <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" aria-hidden />
-                  <div className="rs-alert-body text-sm font-semibold">
-                    Subscription saved. Your department is now active on RosterSync.
-                  </div>
+              {selectedPlan && (
+                <p className="text-xs font-semibold text-slate-500 leading-relaxed">
+                  You&apos;ll pay {formatPlanAmount(selectedPlan.amount, selectedPlan.currency)} per{' '}
+                  {formatInterval(selectedPlan.interval)} via Paystack.
+                </p>
+              )}
+              {checkoutError && (
+                <div className="rs-alert rs-alert--danger" role="alert">
+                  <div className="rs-alert-body text-sm font-semibold">{checkoutError}</div>
                 </div>
               )}
-
-              {!confirmSuccess && (
-                <>
-                  {selectedPlan && (
-                    <p className="text-xs font-semibold text-slate-500 leading-relaxed">
-                      You&apos;ll pay {formatPlanAmount(selectedPlan.amount, selectedPlan.currency)} per{' '}
-                      {formatInterval(selectedPlan.interval)} via Paystack.
-                    </p>
-                  )}
-                  {checkoutError && (
-                    <div className="rs-alert rs-alert--danger" role="alert">
-                      <div className="rs-alert-body text-sm font-semibold">{checkoutError}</div>
-                    </div>
-                  )}
-                  <Button
-                    variant="primary"
-                    className="w-full py-3.5"
-                    disabled={checkoutLoading || !selectedPlanCode}
-                    onClick={() => void handleSubscribe()}
-                  >
-                    {checkoutLoading ? (
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
-                        Processing…
-                      </span>
-                    ) : (
-                      'Subscribe now'
-                    )}
-                  </Button>
-                </>
-              )}
+              <Button
+                variant="primary"
+                className="w-full py-3.5"
+                disabled={checkoutLoading || !selectedPlanCode}
+                onClick={() => void handleSubscribe()}
+              >
+                {checkoutLoading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                    Processing…
+                  </span>
+                ) : (
+                  'Subscribe now'
+                )}
+              </Button>
             </>
-          )}
-
-          {!plansLoading && !plansError && plans.length > 0 && isEntitled && !showCheckout && (
-            <div className="space-y-2" role="radiogroup" aria-label="Subscription plan">
-              {plans.map((plan) => {
-                const isCurrent = plan.planCode === activeSub?.planCode;
-                const selected = plan.planCode === selectedPlanCode;
-                return (
-                  <button
-                    key={plan.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => setSelectedPlanCode(plan.planCode)}
-                    className={`w-full text-left rounded-2xl border p-4 transition-colors touch-manipulation ${
-                      selected
-                        ? 'border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-black text-slate-900">{plan.name}</p>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-0.5">
-                          {intervalLabel(plan.interval)}
-                          {isCurrent ? ' · Current' : ''}
-                        </p>
-                      </div>
-                      <p className="text-sm font-black text-indigo-700 shrink-0">
-                        {formatPlanAmount(plan.amount, plan.currency)}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-              {selectedPlan && selectedPlan.planCode !== activeSub?.planCode && (
-                <>
-                  {checkoutError && (
-                    <div className="rs-alert rs-alert--danger" role="alert">
-                      <div className="rs-alert-body text-sm font-semibold">{checkoutError}</div>
-                    </div>
-                  )}
-                  <Button
-                    variant="primary"
-                    className="w-full py-3.5"
-                    disabled={checkoutLoading}
-                    onClick={() => void handleSubscribe()}
-                  >
-                    {checkoutLoading ? 'Processing…' : 'Switch to this plan'}
-                  </Button>
-                </>
-              )}
-            </div>
           )}
 
           {!plansLoading && !plansError && plans.length === 0 && (
             <p className="text-xs font-semibold text-slate-500 text-center py-4">No subscription plans available.</p>
           )}
         </Card>
-      ) : (
-        !statusLoading &&
-        !isEntitled && (
-          <Card className="p-6">
-            <div className="flex flex-col items-center text-center gap-4 py-4">
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-                <CreditCard size={28} strokeWidth={2} aria-hidden />
-              </span>
-              <div>
-                <p className="text-sm font-black text-slate-800">No active subscription</p>
-                <p className="text-xs font-semibold text-slate-500 mt-2 max-w-sm leading-relaxed">
-                  Your department admin needs to subscribe before everyone can use RosterSync.
-                </p>
-              </div>
-            </div>
-          </Card>
-        )
       )}
 
-      {!isAdmin && !statusLoading && isEntitled && (
+      {!statusLoading && !isAdmin && !isEntitled && (
         <Card className="p-6">
-          <div className="flex flex-col items-center text-center gap-4 py-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
-              <Building2 size={12} aria-hidden />
-              Included with your department
+          <div className="flex flex-col items-center text-center gap-4 py-4">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+              <CreditCard size={28} strokeWidth={2} aria-hidden />
             </span>
+            <div>
+              <p className="text-sm font-black text-slate-800">No active subscription</p>
+              <p className="text-xs font-semibold text-slate-500 mt-2 max-w-sm leading-relaxed">
+                Your department admin needs to subscribe before everyone can use RosterSync.
+              </p>
+            </div>
           </div>
         </Card>
       )}

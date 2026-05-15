@@ -10,6 +10,7 @@ import { initializeSubscriptionCheckout } from '../shared/paystack.js';
 import {
   confirmDepartmentSubscription,
   createPendingDepartmentSubscription,
+  getDepartmentSubscriptionManageLink,
   getDepartmentSubscriptionStatus,
 } from '../shared/subscriptionService.js';
 import { z } from 'zod';
@@ -475,6 +476,17 @@ app.get('/api/billing/status', authMiddleware, withDept, async (req, res) => {
   } catch (error: any) {
     logger.error({ err: error }, 'Subscription status error');
     res.status(500).json({ error: 'Could not load subscription status' });
+  }
+});
+
+app.post('/api/billing/subscribe/manage-link', authMiddleware, adminOnly, withDept, async (req, res) => {
+  try {
+    const departmentId = (req as any).departmentId as string;
+    const link = await getDepartmentSubscriptionManageLink(db, departmentId);
+    res.json({ link });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Subscription manage link error');
+    res.status(400).json({ error: error.message || 'Could not open subscription management' });
   }
 });
 

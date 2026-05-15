@@ -400,11 +400,25 @@ class ApiClient {
         planCode: string;
         planName: string;
         billingInterval: string;
+        amountCents: number;
+        currency: string;
+        currentPeriodStart: number | null;
         currentPeriodEnd: number | null;
         nextPaymentAt: number | null;
         paystackSubscriptionCode: string | null;
+        paymentMethod: {
+          brand: string;
+          last4: string;
+          expMonth: string | null;
+          expYear: string | null;
+          bank: string | null;
+        } | null;
       } | null;
     }>('/api/billing/status');
+  }
+
+  async getSubscriptionManageLink() {
+    return this.request<{ link: string }>('/api/billing/subscribe/manage-link', { method: 'POST' });
   }
 
   async updateFairnessSettings(settings: {

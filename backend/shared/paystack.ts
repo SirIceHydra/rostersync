@@ -38,6 +38,20 @@ export type PaystackVerifyTransaction = {
   plan?: { plan_code?: string; name?: string } | null;
 };
 
+export type PaystackAuthorization = {
+  authorization_code?: string;
+  bin?: string;
+  last4?: string;
+  exp_month?: string;
+  exp_year?: string;
+  channel?: string;
+  card_type?: string;
+  bank?: string;
+  brand?: string;
+  country_code?: string;
+  reusable?: boolean;
+};
+
 export type PaystackSubscription = {
   subscription_code: string;
   status: string;
@@ -47,7 +61,11 @@ export type PaystackSubscription = {
   created_at?: string;
   customer: { customer_code: string };
   plan: { plan_code: string; name?: string; interval?: string };
-  authorization?: { authorization_code: string };
+  authorization?: PaystackAuthorization;
+};
+
+export type PaystackManageLink = {
+  link: string;
 };
 
 function secretKey(): string {
@@ -115,4 +133,18 @@ export async function listCustomerSubscriptions(customerCode: string): Promise<P
   );
   if (Array.isArray(data)) return data;
   return (data as { subscriptions?: PaystackSubscription[] }).subscriptions ?? [];
+}
+
+export async function fetchSubscription(subscriptionCode: string): Promise<PaystackSubscription> {
+  return paystackFetch<PaystackSubscription>(
+    `/subscription/${encodeURIComponent(subscriptionCode.trim())}`
+  );
+}
+
+export async function getSubscriptionManageLink(subscriptionCode: string): Promise<string> {
+  const data = await paystackFetch<PaystackManageLink>(
+    `/subscription/${encodeURIComponent(subscriptionCode.trim())}/manage/link`
+  );
+  if (!data.link) throw new Error('Paystack did not return a manage link');
+  return data.link;
 }
