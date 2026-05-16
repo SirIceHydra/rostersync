@@ -66,6 +66,16 @@ You only need to do this once. Next time you can skip straight to Step 3.
 
 ## Step 3 — Start the Backend (Server)
 
+Configure **`backend/.env`** once: copy **`backend/.env.example`**, then set **`DATABASE_URL`** and **`JWT_SECRET`** (see [Environment Configuration](#environment-configuration)).
+
+The easiest local database is Postgres in Docker from the repo root:
+
+```
+docker compose -f docker-compose.dev.yml up -d
+```
+
+That file uses **`postgresql://rostersync:rostersync@localhost:5432/rostersync`** — match that in **`DATABASE_URL`** (or adjust both to your own Postgres).
+
 Open a terminal window, go to the project folder, and run:
 
 ```

@@ -38,7 +38,8 @@ import {
   Link2,
   UserX,
   CircleDashed,
-  CalendarCheck
+  CalendarCheck,
+  LayoutList,
 } from 'lucide-react';
 
 // --- Production UI Components ---
@@ -935,7 +936,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="shrink-0 flex min-h-[2.75rem] items-center justify-center self-stretch pl-0.5 md:pl-2">
+        <div className="hidden md:flex shrink-0 min-h-[2.75rem] items-center justify-center self-stretch pl-0.5 md:pl-2">
           <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-rose-500 transition-colors touch-manipulation self-center" type="button" aria-label="Sign out">
             <LogOut size={20} />
           </button>
@@ -984,6 +985,21 @@ export default function App() {
                 </button>
               ))}
             </nav>
+            <div className="shrink-0 border-t border-slate-100 px-2 pt-2 pb-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  handleLogout();
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left text-sm font-black transition-colors touch-manipulation text-rose-700 hover:bg-rose-50 active:bg-rose-100"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                  <LogOut size={20} strokeWidth={2} aria-hidden />
+                </span>
+                <span>Sign out</span>
+              </button>
+            </div>
             <p className="px-4 py-3 text-[9px] font-bold text-slate-400 leading-relaxed border-t border-slate-100 shrink-0" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
               Home, Roster &amp; Requests stay at the bottom for quick access.
             </p>
@@ -1491,32 +1507,33 @@ const DashboardView: React.FC<{
           </div>
         </div>
         {isAdmin && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-nowrap gap-1 sm:gap-2 w-full sm:w-auto min-w-0">
             <Button
               onClick={onRegenerate}
               variant="secondary"
-              className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0"
+              className="flex-1 basis-0 min-w-0 justify-center !gap-1 sm:!gap-2 px-1.5 sm:px-3 min-h-11 text-[9px] sm:text-[10px] touch-manipulation uppercase tracking-tight sm:tracking-normal font-extrabold !whitespace-nowrap"
               disabled={loading || !roster}
             >
-              <History size={14} /> REGENERATE
+              <History size={13} className="shrink-0 sm:w-[14px] sm:h-[14px]" /> REGENERATE
             </Button>
-            <Button onClick={onGenerate} variant="secondary" className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0" disabled={loading}>
-              <Plus size={14} /> NEW DRAFT
+            <Button onClick={onGenerate} variant="secondary" className="flex-1 basis-0 min-w-0 justify-center !gap-1 sm:!gap-2 px-1.5 sm:px-3 min-h-11 text-[9px] sm:text-[10px] touch-manipulation uppercase tracking-tight sm:tracking-normal font-extrabold !whitespace-nowrap" disabled={loading}>
+              <Plus size={13} className="shrink-0 sm:w-[14px] sm:h-[14px]" /> NEW DRAFT
             </Button>
             {roster && roster.status === 'DRAFT' && (
-              <Button onClick={onPublish} variant="success" className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0" disabled={loading}>
-                <ShieldCheck size={14} /> PUBLISH
+              <Button onClick={onPublish} variant="success" className="flex-1 basis-0 min-w-0 justify-center !gap-1 sm:!gap-2 px-1.5 sm:px-3 min-h-11 text-[9px] sm:text-[10px] touch-manipulation uppercase tracking-tight sm:tracking-normal font-extrabold !whitespace-nowrap" disabled={loading}>
+                <ShieldCheck size={13} className="shrink-0 sm:w-[14px] sm:h-[14px]" /> PUBLISH
               </Button>
             )}
             {roster && roster.status === 'FINAL' && onUnpublish && (
               <Button
                 onClick={onUnpublish}
                 variant="secondary"
-                className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0 text-amber-700 border-amber-200 hover:bg-amber-50"
+                className="flex-1 basis-0 min-w-0 justify-center !gap-1 sm:!gap-2 px-1.5 sm:px-3 min-h-11 text-[9px] sm:text-[10px] touch-manipulation shrink-0 text-amber-700 border-amber-200 hover:bg-amber-50 uppercase tracking-tight sm:tracking-normal font-extrabold !whitespace-nowrap"
                 disabled={loading}
                 title="Revert to draft — hides the roster from doctors until republished"
               >
-                Revert to draft
+                <span className="sm:hidden">Revert</span>
+                <span className="hidden sm:inline">Revert to draft</span>
               </Button>
             )}
           </div>
@@ -1825,11 +1842,13 @@ const RosterView: React.FC<{
   const [selectedDay, setSelectedDay] = useState(initialDay);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [calendarEditingShiftId, setCalendarEditingShiftId] = useState<string | null>(null);
+  const [rosterBuiltExplainerOpen, setRosterBuiltExplainerOpen] = useState(false);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
   useEffect(() => {
     setEditingShiftId(null);
     setCalendarEditingShiftId(null);
+    setRosterBuiltExplainerOpen(false);
   }, [selectedMonthOffset, roster?.id, roster?.month, roster?.year, viewMode]);
 
   const selectedShifts = roster?.shifts.filter(s => new Date(s.date).getDate() === selectedDay) || [];
@@ -2088,35 +2107,60 @@ const RosterView: React.FC<{
 
         {/* How this roster was generated — algorithm explainer */}
         {report && report.metrics?.length > 0 && (
-          <Card className="mt-4 p-4 bg-indigo-50 border border-indigo-100">
-            <div className="flex items-center gap-2 mb-3">
-              <Info size={14} className="text-indigo-500" />
-              <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">How this roster was built</h4>
-            </div>
-            <div className="text-[10px] text-slate-600 font-bold space-y-2 leading-relaxed">
-              <p><span className="text-indigo-700">1. Non-negotiables:</span> approved full leave always wins. Rest between shifts and how many nights someone can do in a week follow your department settings.</p>
-              <p><span className="text-indigo-700">2. Weekends:</span> no one is allowed to take every weekend in a month — caps keep Saturday and Sunday duty shared.</p>
-              <p>
-                <span className="text-indigo-700">3. Who goes first:</span> honour approved &quot;prefer to work&quot; days, then balance weekend counts, then spread public-holiday duty fairly, then tilt toward people who have carried{' '}
-                {fh.isCalendarYear ? (
-                  <>
-                    a lighter share <strong>in the current calendar year</strong> (see <strong>Balance</strong>; the full published record is still kept).
-                  </>
-                ) : (
-                  <>less of the load <strong>across all published months</strong>.</>
-                )}
-              </p>
-              <p><span className="text-indigo-700">4. New starters:</span> they are lined up with a normal share of the load unless an admin chooses &quot;start next month&quot; or &quot;full pace from day one.&quot;</p>
-              <p>
-                <span className="text-indigo-700">5. Evening out the month:</span> if two people are far apart on weeknight hours, the scheduler may swap who covers which weekday — up to the limit you set under <strong>Balance</strong> — without removing someone&apos;s agreed &quot;prefer to work&quot; day. The swap logic compares people against the team average for the{' '}
-                {fh.isCalendarYear && fh.schedulingYear != null ? (
-                  <strong>{fh.schedulingYear}</strong>
-                ) : (
-                  <>full published record</>
-                )}
-                .
-              </p>
-            </div>
+          <Card className="mt-4 overflow-hidden bg-indigo-50 border border-indigo-100 p-0">
+            <button
+              type="button"
+              id="roster-built-explainer-trigger"
+              aria-expanded={rosterBuiltExplainerOpen}
+              aria-controls="roster-built-explainer-panel"
+              onClick={() => setRosterBuiltExplainerOpen((o) => !o)}
+              className="flex w-full items-center justify-between gap-3 p-4 text-left touch-manipulation hover:bg-indigo-100/60 transition-colors rounded-xl min-h-[48px]"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Info size={14} className="text-indigo-500 shrink-0" aria-hidden />
+                <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">
+                  How this roster was built
+                </h4>
+              </div>
+              <ChevronDown
+                size={18}
+                className={`shrink-0 text-indigo-600 transition-transform duration-200 ${rosterBuiltExplainerOpen ? 'rotate-180' : ''}`}
+                aria-hidden
+              />
+            </button>
+            {rosterBuiltExplainerOpen && (
+              <div
+                id="roster-built-explainer-panel"
+                role="region"
+                aria-labelledby="roster-built-explainer-trigger"
+                className="px-4 pb-4 pt-0 border-t border-indigo-100/80"
+              >
+                <div className="text-[10px] text-slate-600 font-bold space-y-2 leading-relaxed pt-3">
+                  <p><span className="text-indigo-700">1. Non-negotiables:</span> approved full leave always wins. Rest between shifts and how many nights someone can do in a week follow your department settings.</p>
+                  <p><span className="text-indigo-700">2. Weekends:</span> no one is allowed to take every weekend in a month — caps keep Saturday and Sunday duty shared.</p>
+                  <p>
+                    <span className="text-indigo-700">3. Who goes first:</span> honour approved &quot;prefer to work&quot; days, then balance weekend counts, then spread public-holiday duty fairly, then tilt toward people who have carried{' '}
+                    {fh.isCalendarYear ? (
+                      <>
+                        a lighter share <strong>in the current calendar year</strong> (see <strong>Balance</strong>; the full published record is still kept).
+                      </>
+                    ) : (
+                      <>less of the load <strong>across all published months</strong>.</>
+                    )}
+                  </p>
+                  <p><span className="text-indigo-700">4. New starters:</span> they are lined up with a normal share of the load unless an admin chooses &quot;start next month&quot; or &quot;full pace from day one.&quot;</p>
+                  <p>
+                    <span className="text-indigo-700">5. Evening out the month:</span> if two people are far apart on weeknight hours, the scheduler may swap who covers which weekday — up to the limit you set under <strong>Balance</strong> — without removing someone&apos;s agreed &quot;prefer to work&quot; day. The swap logic compares people against the team average for the{' '}
+                    {fh.isCalendarYear && fh.schedulingYear != null ? (
+                      <strong>{fh.schedulingYear}</strong>
+                    ) : (
+                      <>full published record</>
+                    )}
+                    .
+                  </p>
+                </div>
+              </div>
+            )}
           </Card>
         )}
 
@@ -2231,20 +2275,26 @@ const RosterView: React.FC<{
             <button
               type="button"
               onClick={() => setViewMode('calendar')}
-              className={`px-4 py-2.5 min-h-11 rounded-lg text-[10px] font-black transition-all touch-manipulation ${
-                viewMode === 'calendar' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+              aria-label="Calendar view"
+              aria-pressed={viewMode === 'calendar'}
+              title="Calendar view"
+              className={`flex items-center justify-center min-h-11 min-w-11 rounded-lg transition-all touch-manipulation ${
+                viewMode === 'calendar' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              Calendar
+              <Calendar size={18} aria-hidden />
             </button>
             <button
               type="button"
               onClick={() => setViewMode('list')}
-              className={`px-4 py-2.5 min-h-11 rounded-lg text-[10px] font-black transition-all touch-manipulation ${
-                viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
+              title="List view"
+              className={`flex items-center justify-center min-h-11 min-w-11 rounded-lg transition-all touch-manipulation ${
+                viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              List
+              <LayoutList size={18} aria-hidden />
             </button>
           </div>
           <Button onClick={handlePrint} variant="secondary" className="px-3 min-h-11 text-[10px] touch-manipulation shrink-0">
@@ -2363,6 +2413,7 @@ const AnalyticsView: React.FC<{
   onChangeMonth: (offset: 0 | 1) => void;
   onNavigate?: (view: 'REQUESTS' | 'ROSTER') => void;
 }> = ({ report, doctors, roster, requests, currentUser, selectedMonthOffset, onChangeMonth, onNavigate }) => {
+  const [metricsRosterBuiltOpen, setMetricsRosterBuiltOpen] = useState(false);
   const today = new Date();
   const baseMonth = today.getMonth();
   const baseYear = today.getFullYear();
@@ -2372,6 +2423,10 @@ const AnalyticsView: React.FC<{
   const viewYear = roster?.year ?? yearIdx;
   const analyticsWarnings = getRosterWarningsForView(report?.warnings, viewMonth, viewYear);
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  useEffect(() => {
+    setMetricsRosterBuiltOpen(false);
+  }, [selectedMonthOffset, roster?.id, roster?.month, roster?.year]);
 
   if (!report) return (
     <div className="space-y-4">
@@ -2421,35 +2476,60 @@ const AnalyticsView: React.FC<{
         </div>
       )}
 
-      <Card className="p-4 bg-indigo-50 border border-indigo-100">
-        <div className="flex items-center gap-2 mb-3">
-          <Info size={14} className="text-indigo-500" />
-          <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">How the roster is built</h4>
-        </div>
-        <ol className="text-[10px] text-slate-600 font-bold space-y-1.5 leading-relaxed list-decimal pl-4">
-          <li><span className="text-indigo-700">Safety first:</span> full leave is never ignored. Rest gaps and weekly caps follow your department settings.</li>
-          <li><span className="text-indigo-700">Weekends:</span> monthly caps stop one person from taking every Saturday or Sunday.</li>
-          <li>
-            <span className="text-indigo-700">Fair order:</span> honour &quot;prefer to work&quot; days, respect post-call preferences where possible, balance weekend counts, spread public-holiday duty across the year, then tilt toward people who have carried{' '}
-            {fhT.isCalendarYear ? (
-              <>
-                a lighter share in <strong>{schedYear}</strong> (see <strong>Balance</strong> — the full published record is still kept).
-              </>
-            ) : (
-              <>less of the load <strong>across all published months</strong>.</>
-            )}
-          </li>
-          <li><span className="text-indigo-700">New starters:</span> they get a normal share of the month unless an admin chooses a gentler start or a later first month.</li>
-          <li>
-            <span className="text-indigo-700">Last pass:</span> weekday swaps may nudge hours between people who are high or low versus the team average for the{' '}
-            {fhT.isCalendarYear ? (
-              <strong>{schedYear}</strong>
-            ) : (
-              <>full published record</>
-            )}
-            , without breaking preferred work days or approved unavailability.
-          </li>
-        </ol>
+      <Card className="overflow-hidden bg-indigo-50 border border-indigo-100 p-0">
+        <button
+          type="button"
+          id="analytics-roster-built-explainer-trigger"
+          aria-expanded={metricsRosterBuiltOpen}
+          aria-controls="analytics-roster-built-explainer-panel"
+          onClick={() => setMetricsRosterBuiltOpen((o) => !o)}
+          className="flex w-full items-center justify-between gap-3 p-4 text-left touch-manipulation hover:bg-indigo-100/60 transition-colors rounded-xl min-h-[48px]"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <Info size={14} className="text-indigo-500 shrink-0" aria-hidden />
+            <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">
+              How the roster is built
+            </h4>
+          </div>
+          <ChevronDown
+            size={18}
+            className={`shrink-0 text-indigo-600 transition-transform duration-200 ${metricsRosterBuiltOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+        {metricsRosterBuiltOpen && (
+          <div
+            id="analytics-roster-built-explainer-panel"
+            role="region"
+            aria-labelledby="analytics-roster-built-explainer-trigger"
+            className="px-4 pb-4 pt-0 border-t border-indigo-100/80"
+          >
+            <ol className="text-[10px] text-slate-600 font-bold space-y-1.5 leading-relaxed list-decimal pl-4 pt-3">
+              <li><span className="text-indigo-700">Safety first:</span> full leave is never ignored. Rest gaps and weekly caps follow your department settings.</li>
+              <li><span className="text-indigo-700">Weekends:</span> monthly caps stop one person from taking every Saturday or Sunday.</li>
+              <li>
+                <span className="text-indigo-700">Fair order:</span> honour &quot;prefer to work&quot; days, respect post-call preferences where possible, balance weekend counts, spread public-holiday duty across the year, then tilt toward people who have carried{' '}
+                {fhT.isCalendarYear ? (
+                  <>
+                    a lighter share in <strong>{schedYear}</strong> (see <strong>Balance</strong> — the full published record is still kept).
+                  </>
+                ) : (
+                  <>less of the load <strong>across all published months</strong>.</>
+                )}
+              </li>
+              <li><span className="text-indigo-700">New starters:</span> they get a normal share of the month unless an admin chooses a gentler start or a later first month.</li>
+              <li>
+                <span className="text-indigo-700">Last pass:</span> weekday swaps may nudge hours between people who are high or low versus the team average for the{' '}
+                {fhT.isCalendarYear ? (
+                  <strong>{schedYear}</strong>
+                ) : (
+                  <>full published record</>
+                )}
+                , without breaking preferred work days or approved unavailability.
+              </li>
+            </ol>
+          </div>
+        )}
       </Card>
 
       <Card>
@@ -2652,6 +2732,8 @@ const TuningView: React.FC<{
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [balanceWhatYouNoticeOpen, setBalanceWhatYouNoticeOpen] = useState(false);
+  const [balanceSituationsOpen, setBalanceSituationsOpen] = useState(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -2818,15 +2900,40 @@ const TuningView: React.FC<{
         </div>
       </Card>
 
-      <Card className="p-5 bg-indigo-50/50 border-indigo-100">
-        <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-3">What you will notice</h3>
-        <ul className="space-y-2 text-[11px] text-slate-600 leading-relaxed list-disc pl-4">
-          <li><strong>Gentler or stricter balance:</strong> tighter numbers mean you see amber banners sooner if one person has many more nights than someone else in the same month.</li>
-          <li><strong>Weekend spread:</strong> controls how many extra Saturday or Sunday blocks one person can have compared with the quietest colleague before you are nudged to review.</li>
-          <li><strong>Rest between nights:</strong> larger gaps mean people get more breathing room; the smallest setting is only for teams that are very short-staffed.</li>
-          <li><strong>Busy weeks:</strong> caps how many on-call nights someone can carry in any rolling week so nobody stacks too many shifts together.</li>
-          <li><strong>Approved full leave</strong> is never overwritten. If the whole team is off, a day may still need a manual decision.</li>
-        </ul>
+      <Card className="overflow-hidden bg-indigo-50/50 border-indigo-100 p-0">
+        <button
+          type="button"
+          id="balance-what-you-notice-trigger"
+          aria-expanded={balanceWhatYouNoticeOpen}
+          aria-controls="balance-what-you-notice-panel"
+          onClick={() => setBalanceWhatYouNoticeOpen((o) => !o)}
+          className="flex w-full items-center justify-between gap-3 p-4 md:p-5 text-left touch-manipulation hover:bg-indigo-100/40 active:bg-indigo-100/60 transition-colors min-h-[48px]"
+        >
+          <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+            What you will notice
+          </span>
+          <ChevronDown
+            size={18}
+            className={`shrink-0 text-indigo-600 transition-transform duration-200 ${balanceWhatYouNoticeOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+        {balanceWhatYouNoticeOpen && (
+          <div
+            id="balance-what-you-notice-panel"
+            role="region"
+            aria-labelledby="balance-what-you-notice-trigger"
+            className="px-4 pb-4 pt-0 md:px-5 md:pb-5 border-t border-indigo-100/80"
+          >
+            <ul className="space-y-2 text-[11px] text-slate-600 leading-relaxed list-disc pl-4 pt-3">
+              <li><strong>Gentler or stricter balance:</strong> tighter numbers mean you see amber banners sooner if one person has many more nights than someone else in the same month.</li>
+              <li><strong>Weekend spread:</strong> controls how many extra Saturday or Sunday blocks one person can have compared with the quietest colleague before you are nudged to review.</li>
+              <li><strong>Rest between nights:</strong> larger gaps mean people get more breathing room; the smallest setting is only for teams that are very short-staffed.</li>
+              <li><strong>Busy weeks:</strong> caps how many on-call nights someone can carry in any rolling week so nobody stacks too many shifts together.</li>
+              <li><strong>Approved full leave</strong> is never overwritten. If the whole team is off, a day may still need a manual decision.</li>
+            </ul>
+          </div>
+        )}
       </Card>
 
       <Card className="p-5 space-y-4">
@@ -2944,30 +3051,53 @@ const TuningView: React.FC<{
         )}
       </Card>
 
-      <Card className="p-5">
-        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Situations you might see</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px] leading-relaxed text-slate-600">
-          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
-            <span className="font-bold text-emerald-800 block mb-1">New colleagues</span>
-            They are given a normal share of the month instead of being buried or left out purely because their published workload in the{' '}
-            {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
-              <strong>{fhActive.schedulingYear}</strong>
-            ) : (
-              <>full record</>
-            )}{' '}
-            still looks thin.
-          </div>
-          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-            <span className="font-bold text-blue-800 block mb-1">Long leave</span>
-            People coming back are not automatically handed an unfair overload the first month.
-          </div>
-          <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
-            <span className="font-bold text-amber-900 block mb-1">Many "prefer not" days</span>
-            If several people mark the same dates, the schedule may still need someone — you may see a heads-up to decide manually.
-          </div>
-          <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
-            <span className="font-bold text-purple-900 block mb-1">Small or odd-sized teams</span>
-            Perfect symmetry is not always possible; looser balance settings reduce noise while you still cover the service.
+      <Card className="p-0 md:p-5 overflow-hidden">
+        <button
+          type="button"
+          className="md:hidden flex w-full items-center justify-between gap-3 p-4 text-left touch-manipulation hover:bg-slate-50 active:bg-slate-100 transition-colors min-h-[48px]"
+          aria-expanded={balanceSituationsOpen}
+          aria-controls="balance-situations-panel"
+          onClick={() => setBalanceSituationsOpen((o) => !o)}
+        >
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Situations you might see</span>
+          <ChevronDown
+            size={18}
+            className={`shrink-0 text-slate-500 transition-transform duration-200 ${balanceSituationsOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+        <h3 className="hidden md:block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+          Situations you might see
+        </h3>
+        <div
+          id="balance-situations-panel"
+          role="region"
+          aria-label="Situations you might see"
+          className={`${balanceSituationsOpen ? 'block' : 'hidden'} md:block px-4 pb-4 md:px-0 md:pb-0 border-t border-slate-100 md:border-0`}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px] leading-relaxed text-slate-600 pt-3 md:pt-0">
+            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+              <span className="font-bold text-emerald-800 block mb-1">New colleagues</span>
+              They are given a normal share of the month instead of being buried or left out purely because their published workload in the{' '}
+              {fhActive.isCalendarYear && fhActive.schedulingYear != null ? (
+                <strong>{fhActive.schedulingYear}</strong>
+              ) : (
+                <>full record</>
+              )}{' '}
+              still looks thin.
+            </div>
+            <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <span className="font-bold text-blue-800 block mb-1">Long leave</span>
+              People coming back are not automatically handed an unfair overload the first month.
+            </div>
+            <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+              <span className="font-bold text-amber-900 block mb-1">Many &quot;prefer not&quot; days</span>
+              If several people mark the same dates, the schedule may still need someone — you may see a heads-up to decide manually.
+            </div>
+            <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
+              <span className="font-bold text-purple-900 block mb-1">Small or odd-sized teams</span>
+              Perfect symmetry is not always possible; looser balance settings reduce noise while you still cover the service.
+            </div>
           </div>
         </div>
       </Card>
