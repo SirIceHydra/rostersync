@@ -57,12 +57,22 @@ export type PaystackSubscription = {
   status: string;
   amount: number;
   next_payment_date?: string;
+  nextPaymentDate?: string;
   createdAt?: string;
   created_at?: string;
   customer: { customer_code: string };
   plan: { plan_code: string; name?: string; interval?: string };
   authorization?: PaystackAuthorization;
 };
+
+/** Parse Paystack's next billing timestamp from a subscription payload. */
+export function extractNextPaymentMs(sub?: PaystackSubscription | null): number | null {
+  if (!sub) return null;
+  const raw = sub.next_payment_date ?? sub.nextPaymentDate;
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : null;
+}
 
 export type PaystackManageLink = {
   link: string;

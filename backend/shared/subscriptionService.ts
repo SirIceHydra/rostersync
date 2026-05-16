@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import type { DbClient } from './database.js';
 import {
+  extractNextPaymentMs,
   fetchSubscription,
   getSubscriptionManageLink,
   listCustomerSubscriptions,
@@ -9,6 +10,7 @@ import {
   type PaystackSubscription,
   type PaystackVerifyTransaction,
 } from './paystack.js';
+import type { SubscriptionBillingInterval } from './subscriptionTypes.js';
 import {
   SUBSCRIPTION_ENTITLED_STATUSES,
   type DepartmentSubscriptionEndReason,
@@ -48,8 +50,40 @@ function paidAtMs(tx: PaystackVerifyTransaction): number {
 }
 
 function nextPaymentMs(sub?: PaystackSubscription | null): number | null {
-  const iso = sub?.next_payment_date;
-  return iso ? Date.parse(iso) : null;
+  return extractNextPaymentMs(sub);
+}
+
+/** Estimate next bill when Paystack has not populated next_payment_date yet. */
+function estimateNextBillingMs(interval: string, anchorMs: number): number | null {
+  if (!Number.isFinite(anchorMs) || anchorMs <= 0) return null;
+  const d = new Date(anchorMs);
+  const iv = interval as SubscriptionBillingInterval;
+  switch (iv) {
+    case 'hourly':
+      d.setHours(d.getHours() + 1);
+      break;
+    case 'daily':
+      d.setDate(d.getDate() + 1);
+      break;
+    case 'weekly':
+      d.setDate(d.getDate() + 7);
+      break;
+    case 'monthly':
+      d.setMonth(d.getMonth() + 1);
+      break;
+    case 'quarterly':
+      d.setMonth(d.getMonth() + 3);
+      break;
+    case 'biannually':
+      d.setMonth(d.getMonth() + 6);
+      break;
+    case 'annually':
+      d.setFullYear(d.getFullYear() + 1);
+      break;
+    default:
+      d.setMonth(d.getMonth() + 1);
+  }
+  return d.getTime();
 }
 
 /** Postgres BIGINT columns may arrive as strings — normalize to ms or null. */
@@ -191,7 +225,7 @@ export async function confirmDepartmentSubscription(
   paystackSubscriptionCode: string | null;
 }> {
   const row = await db.get(
-    `SELECT ds.*, sp.paystack_plan_code
+    `SELECT ds.*, sp.paystack_plan_code, sp.billing_interval
      FROM department_subscriptions ds
      INNER JOIN subscription_plans sp ON sp.id = ds.plan_id
      WHERE ds.checkout_reference = ? AND ds.department_id = ?`,
@@ -254,7 +288,17 @@ export async function confirmDepartmentSubscription(
     ? mapPaystackSubscriptionStatus(paystackSub.status)
     : 'ACTIVE';
   const periodStart = paidAtMs(tx);
-  const nextPayment = nextPaymentMs(paystackSub);
+  let nextPayment = nextPaymentMs(paystackSub);
+  if (!nextPayment && paystackSub?.subscription_code) {
+    try {
+      nextPayment = nextPaymentMs(await fetchSubscription(paystackSub.subscription_code));
+    } catch {
+      /* fall through to estimate */
+    }
+  }
+  if (!nextPayment && periodStart) {
+    nextPayment = estimateNextBillingMs(row.billing_interval, periodStart);
+  }
   const now = Date.now();
   const cardAuth = paystackSub?.authorization ?? tx.authorization ?? null;
   const card = cardFieldsFromAuthorization(cardAuth);
@@ -346,7 +390,7 @@ export async function getDepartmentSubscriptionStatus(
   } | null;
 }> {
   const row = await db.get(
-    `SELECT ds.id, ds.status, ds.current_period_start, ds.current_period_end, ds.next_payment_at,
+    `SELECT ds.id, ds.status, ds.created_at, ds.current_period_start, ds.current_period_end, ds.next_payment_at,
             ds.paystack_subscription_code, ds.card_brand, ds.card_last4, ds.card_exp_month,
             ds.card_exp_year, ds.card_bank,
             sp.paystack_plan_code, sp.name AS plan_name, sp.billing_interval,
@@ -372,37 +416,46 @@ export async function getDepartmentSubscriptionStatus(
   let cardExpYear = row.card_exp_year as string | null;
   let cardBank = row.card_bank as string | null;
   let nextPaymentAt = toEpochMs(row.next_payment_at);
+  const periodStart = toEpochMs(row.current_period_start);
+  const createdAt = toEpochMs(row.created_at);
 
-  if (row.paystack_subscription_code && (!cardLast4 || !nextPaymentAt)) {
+  if (row.paystack_subscription_code) {
     try {
       const live = await fetchSubscription(row.paystack_subscription_code);
-      const card = cardFieldsFromAuthorization(live.authorization);
-      if (!cardLast4 && card.cardLast4) {
-        cardBrand = card.cardBrand;
-        cardLast4 = card.cardLast4;
-        cardExpMonth = card.cardExpMonth;
-        cardExpYear = card.cardExpYear;
-        cardBank = card.cardBank;
+      const liveNext = nextPaymentMs(live);
+      if (liveNext) {
+        nextPaymentAt = liveNext;
         await db.run(
-          `UPDATE department_subscriptions SET
-            card_brand = ?, card_last4 = ?, card_exp_month = ?, card_exp_year = ?, card_bank = ?,
-            next_payment_at = COALESCE(?, next_payment_at), updated_at = ?
-           WHERE id = ?`,
-          [
-            cardBrand,
-            cardLast4,
-            cardExpMonth,
-            cardExpYear,
-            cardBank,
-            nextPaymentMs(live),
-            Date.now(),
-            row.id,
-          ]
+          `UPDATE department_subscriptions SET next_payment_at = ?, updated_at = ? WHERE id = ?`,
+          [liveNext, Date.now(), row.id]
         );
       }
-      if (!nextPaymentAt) nextPaymentAt = nextPaymentMs(live);
+      if (!cardLast4) {
+        const card = cardFieldsFromAuthorization(live.authorization);
+        if (card.cardLast4) {
+          cardBrand = card.cardBrand;
+          cardLast4 = card.cardLast4;
+          cardExpMonth = card.cardExpMonth;
+          cardExpYear = card.cardExpYear;
+          cardBank = card.cardBank;
+          await db.run(
+            `UPDATE department_subscriptions SET
+              card_brand = ?, card_last4 = ?, card_exp_month = ?, card_exp_year = ?, card_bank = ?,
+              updated_at = ?
+             WHERE id = ?`,
+            [cardBrand, cardLast4, cardExpMonth, cardExpYear, cardBank, Date.now(), row.id]
+          );
+        }
+      }
     } catch {
-      /* use stored values */
+      /* use stored / estimated values */
+    }
+  }
+
+  if (!nextPaymentAt) {
+    const anchor = periodStart ?? createdAt;
+    if (anchor) {
+      nextPaymentAt = estimateNextBillingMs(row.billing_interval, anchor);
     }
   }
 

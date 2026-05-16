@@ -233,12 +233,12 @@ export const SubscriptionView: React.FC<{
             </div>
           </div>
 
-                    {formatBillingDate(activeSub.nextPaymentAt) && (
-            <dl className="text-xs">
-              <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">Next billing date</dt>
-              <dd className="font-semibold text-slate-800 mt-0.5">{formatBillingDate(activeSub.nextPaymentAt)}</dd>
-            </dl>
-          )}
+          <dl className="text-xs">
+            <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">Next billing date</dt>
+            <dd className="font-semibold text-slate-800 mt-0.5">
+              {formatBillingDate(activeSub.nextPaymentAt) ?? '—'}
+            </dd>
+          </dl>
 
           {isAdmin && activeSub.paymentMethod && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
