@@ -53,9 +53,19 @@ function intervalLabel(interval: string): string {
   return labels[interval] ?? formatInterval(interval);
 }
 
-function formatDate(ms: number | null): string | null {
-  if (!ms) return null;
-  return new Date(ms).toLocaleDateString('en-ZA', {
+function toEpochMs(value: number | string | null | undefined): number | null {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function formatBillingDate(value: number | string | null | undefined): string | null {
+  const ms = toEpochMs(value);
+  if (ms == null) return null;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-ZA', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -223,24 +233,12 @@ export const SubscriptionView: React.FC<{
             </div>
           </div>
 
-          <dl className="grid grid-cols-1 gap-3 text-xs">
-            {formatDate(activeSub.nextPaymentAt) && (
-              <div>
-                <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">Next payment</dt>
-                <dd className="font-semibold text-slate-800 mt-0.5">{formatDate(activeSub.nextPaymentAt)}</dd>
-              </div>
-            )}
-            {formatDate(activeSub.currentPeriodStart) && (
-              <div>
-                <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">Current period from</dt>
-                <dd className="font-semibold text-slate-800 mt-0.5">{formatDate(activeSub.currentPeriodStart)}</dd>
-              </div>
-            )}
-            <div>
-              <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">Plan code</dt>
-              <dd className="font-mono font-semibold text-slate-600 mt-0.5 text-[11px]">{activeSub.planCode}</dd>
-            </div>
-          </dl>
+                    {formatBillingDate(activeSub.nextPaymentAt) && (
+            <dl className="text-xs">
+              <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">Next billing date</dt>
+              <dd className="font-semibold text-slate-800 mt-0.5">{formatBillingDate(activeSub.nextPaymentAt)}</dd>
+            </dl>
+          )}
 
           {isAdmin && activeSub.paymentMethod && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4">

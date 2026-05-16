@@ -52,6 +52,14 @@ function nextPaymentMs(sub?: PaystackSubscription | null): number | null {
   return iso ? Date.parse(iso) : null;
 }
 
+/** Postgres BIGINT columns may arrive as strings — normalize to ms or null. */
+function toEpochMs(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 function cardFieldsFromAuthorization(auth?: PaystackAuthorization | null) {
   if (!auth?.last4) {
     return {
@@ -363,7 +371,7 @@ export async function getDepartmentSubscriptionStatus(
   let cardExpMonth = row.card_exp_month as string | null;
   let cardExpYear = row.card_exp_year as string | null;
   let cardBank = row.card_bank as string | null;
-  let nextPaymentAt = row.next_payment_at as number | null;
+  let nextPaymentAt = toEpochMs(row.next_payment_at);
 
   if (row.paystack_subscription_code && (!cardLast4 || !nextPaymentAt)) {
     try {
@@ -420,8 +428,8 @@ export async function getDepartmentSubscriptionStatus(
       billingInterval: row.billing_interval,
       amountCents: row.amount_cents,
       currency: row.currency,
-      currentPeriodStart: row.current_period_start ?? null,
-      currentPeriodEnd: row.current_period_end ?? null,
+      currentPeriodStart: toEpochMs(row.current_period_start),
+      currentPeriodEnd: toEpochMs(row.current_period_end),
       nextPaymentAt,
       paystackSubscriptionCode: row.paystack_subscription_code ?? null,
       paymentMethod,
