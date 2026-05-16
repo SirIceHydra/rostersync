@@ -18,6 +18,8 @@ COPY backend/package*.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/dist ./dist
+# start:all runs scripts/wait-and-run.mjs before the gateway
+COPY --from=builder /app/scripts ./scripts
 
 ENV NODE_ENV=production
 

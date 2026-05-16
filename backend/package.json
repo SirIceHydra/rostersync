@@ -16,7 +16,7 @@
     "build": "tsc --project tsconfig.json",
     "start:gateway": "node dist/services/gateway.js",
     "start": "node dist/services/gateway.js",
-    "start:all": "concurrently --kill-others-on-fail -n auth,roster,request,user,analytics,gateway -c blue,green,yellow,magenta,cyan,white \"node dist/services/auth-service.js\" \"node dist/services/roster-service.js\" \"node dist/services/request-service.js\" \"node dist/services/user-service.js\" \"node dist/services/analytics-service.js\" \"node scripts/wait-and-run.mjs 2000 start:gateway\""
+    "start:all": "concurrently --kill-others-on-fail -n auth,roster,request,user,analytics,gateway -c blue,green,yellow,magenta,cyan,white \"node dist/services/auth-service.js\" \"node dist/services/roster-service.js\" \"node dist/services/request-service.js\" \"node dist/services/user-service.js\" \"node dist/services/analytics-service.js\" \"sh -c 'sleep 2 && node dist/services/gateway.js'\""
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
