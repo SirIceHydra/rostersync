@@ -28,8 +28,22 @@ export function computeTrialEndsAtMs(fromMs: number = Date.now()): number | null
   return addMonthsMs(fromMs, months);
 }
 
+/** Trial window has not ended yet (by date only). */
 export function isSubscriptionOnTrial(trialEndsAt: unknown): boolean {
   if (trialEndsAt == null || trialEndsAt === '') return false;
   const n = typeof trialEndsAt === 'number' ? trialEndsAt : Number(trialEndsAt);
   return Number.isFinite(n) && n > Date.now();
+}
+
+/** Show trial UX only while the Paystack subscription is still active (not cancelled, etc.). */
+export function isActiveTrialPeriod(
+  trialEndsAt: unknown,
+  status: string
+): boolean {
+  return isSubscriptionOnTrial(trialEndsAt) && status === 'ACTIVE';
+}
+
+/** Trial calendar window (for copy), regardless of Paystack status. */
+export function isWithinTrialWindow(trialEndsAt: unknown): boolean {
+  return isSubscriptionOnTrial(trialEndsAt);
 }

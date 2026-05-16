@@ -14,7 +14,7 @@ import {
 } from './paystack.js';
 import {
   computeTrialEndsAtMs,
-  isSubscriptionOnTrial,
+  isActiveTrialPeriod,
   subscriptionTrialMonths,
 } from './subscriptionTrial.js';
 import type { SubscriptionBillingInterval } from './subscriptionTypes.js';
@@ -338,7 +338,7 @@ export async function confirmDepartmentSubscription(
       isEntitled: true,
       paystackSubscriptionCode: row.paystack_subscription_code ?? null,
       trialEndsAt,
-      isTrialing: isSubscriptionOnTrial(trialEndsAt),
+      isTrialing: isActiveTrialPeriod(trialEndsAt, 'ACTIVE'),
     };
   }
 
@@ -495,7 +495,7 @@ export async function confirmDepartmentSubscription(
     isEntitled: SUBSCRIPTION_ENTITLED_STATUSES.includes(status),
     paystackSubscriptionCode: paystackSub?.subscription_code ?? null,
     trialEndsAt,
-    isTrialing: isSubscriptionOnTrial(trialEndsAt),
+    isTrialing: isActiveTrialPeriod(trialEndsAt, status),
   };
 }
 
@@ -647,7 +647,7 @@ export async function getDepartmentSubscriptionStatus(
   }
 
   const trialEndsAt = toEpochMs(row.trial_ends_at);
-  const onTrial = isSubscriptionOnTrial(trialEndsAt);
+  const onTrial = isActiveTrialPeriod(trialEndsAt, status);
 
   if (onTrial && trialEndsAt) {
     nextPaymentAt = trialEndsAt;

@@ -88,25 +88,30 @@ function trialMonthsLabel(months: number): string {
   return `${months} months`;
 }
 
+function isWithinTrialWindow(sub: SubRow): boolean {
+  const ms = toEpochMs(sub.trialEndsAt);
+  return ms != null && ms > Date.now();
+}
+
 function getSubscriptionStatusDisplay(sub: SubRow): StatusDisplay {
   const accessEndMs = sub.currentPeriodEnd ?? sub.nextPaymentAt;
   const accessEnd = formatBillingDate(accessEndMs);
   const nextBill = formatBillingDate(sub.nextPaymentAt);
   const trialEnd = formatBillingDate(sub.trialEndsAt);
-
-  if (sub.isTrialing) {
-    return {
-      badge: trialEnd ? `Free trial until ${trialEnd}` : 'Free trial',
-      badgeColor: 'green',
-      hint: 'Your card is on file — billing starts automatically when the trial ends.',
-      dateLabel: 'First billing date',
-      dateValue: trialEnd ?? nextBill,
-      icon: 'active',
-    };
-  }
+  const inTrialWindow = isWithinTrialWindow(sub);
 
   switch (sub.status) {
     case 'ACTIVE':
+      if (sub.isTrialing) {
+        return {
+          badge: trialEnd ? `Free trial until ${trialEnd}` : 'Free trial',
+          badgeColor: 'green',
+          hint: 'Your card is on file — billing starts automatically when the trial ends.',
+          dateLabel: 'First billing date',
+          dateValue: trialEnd ?? nextBill,
+          icon: 'active',
+        };
+      }
       return {
         badge: 'Active',
         badgeColor: 'green',
@@ -119,7 +124,9 @@ function getSubscriptionStatusDisplay(sub: SubRow): StatusDisplay {
       return {
         badge: accessEnd ? `Active until ${accessEnd}` : 'Active until period ends',
         badgeColor: 'yellow',
-        hint: 'Cancelled on Paystack — it will not renew.',
+        hint: inTrialWindow
+          ? 'Cancelled during your free trial — you keep access until the date below.'
+          : 'Cancelled on Paystack — it will not renew.',
         dateLabel: 'Access ends',
         dateValue: accessEnd,
         icon: 'ending',
@@ -128,18 +135,33 @@ function getSubscriptionStatusDisplay(sub: SubRow): StatusDisplay {
       return {
         badge: 'Payment attention needed',
         badgeColor: 'red',
-        hint: 'Update your payment method to keep access.',
-        dateLabel: 'Next billing date',
-        dateValue: nextBill,
+        hint: inTrialWindow
+          ? 'There is a problem with your card before the trial ends — update your payment method.'
+          : 'Update your payment method to keep access.',
+        dateLabel: inTrialWindow ? 'First billing date' : 'Next billing date',
+        dateValue: inTrialWindow ? trialEnd ?? nextBill : nextBill,
         icon: 'warning',
       };
     case 'PAST_DUE':
       return {
         badge: 'Past due',
         badgeColor: 'red',
-        hint: 'Please update billing to restore full access.',
-        dateLabel: 'Next billing date',
-        dateValue: nextBill,
+        hint: inTrialWindow
+          ? 'Billing failed — update your payment method to keep access after the trial.'
+          : 'Please update billing to restore full access.',
+        dateLabel: inTrialWindow ? 'First billing date' : 'Next billing date',
+        dateValue: inTrialWindow ? trialEnd ?? nextBill : nextBill,
+        icon: 'warning',
+      };
+    case 'CANCELLED':
+      return {
+        badge: 'Cancelled',
+        badgeColor: 'slate',
+        hint: inTrialWindow
+          ? 'Your subscription was cancelled during the free trial.'
+          : 'This subscription has been cancelled.',
+        dateLabel: null,
+        dateValue: null,
         icon: 'warning',
       };
     default:
