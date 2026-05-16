@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CreditCard, Building2, Loader2, CheckCircle2, ExternalLink } from 'lucide-react';
+import { CreditCard, Building2, Loader2, CheckCircle2, ExternalLink, Check, RefreshCw, AlertCircle } from 'lucide-react';
 import { Card } from './Card';
 import { Button } from './Button';
 import { Badge } from './Badge';
@@ -72,18 +72,97 @@ function formatBillingDate(value: number | string | null | undefined): string | 
   });
 }
 
-function statusLabel(status: string): string {
-  const map: Record<string, string> = {
-    ACTIVE: 'Active',
-    NON_RENEWING: 'Active until renewal ends',
-    ATTENTION: 'Payment attention needed',
-    PAST_DUE: 'Past due',
-    PENDING: 'Checkout pending',
-    CANCELLED: 'Cancelled',
-    COMPLETED: 'Completed',
-    INCOMPLETE: 'Incomplete',
-  };
-  return map[status] ?? status;
+type SubRow = NonNullable<BillingStatus['subscription']>;
+
+type StatusDisplay = {
+  badge: string;
+  badgeColor: 'green' | 'yellow' | 'red' | 'slate';
+  hint: string;
+  dateLabel: string | null;
+  dateValue: string | null;
+  icon: 'active' | 'ending' | 'warning';
+};
+
+function getSubscriptionStatusDisplay(sub: SubRow): StatusDisplay {
+  const accessEndMs = sub.currentPeriodEnd ?? sub.nextPaymentAt;
+  const accessEnd = formatBillingDate(accessEndMs);
+  const nextBill = formatBillingDate(sub.nextPaymentAt);
+
+  switch (sub.status) {
+    case 'ACTIVE':
+      return {
+        badge: 'Active',
+        badgeColor: 'green',
+        hint: 'Your subscription renews automatically.',
+        dateLabel: 'Next billing date',
+        dateValue: nextBill,
+        icon: 'active',
+      };
+    case 'NON_RENEWING':
+      return {
+        badge: accessEnd ? `Active until ${accessEnd}` : 'Active until period ends',
+        badgeColor: 'yellow',
+        hint: 'Cancelled on Paystack — it will not renew.',
+        dateLabel: 'Access ends',
+        dateValue: accessEnd,
+        icon: 'ending',
+      };
+    case 'ATTENTION':
+      return {
+        badge: 'Payment attention needed',
+        badgeColor: 'red',
+        hint: 'Update your payment method to keep access.',
+        dateLabel: 'Next billing date',
+        dateValue: nextBill,
+        icon: 'warning',
+      };
+    case 'PAST_DUE':
+      return {
+        badge: 'Past due',
+        badgeColor: 'red',
+        hint: 'Please update billing to restore full access.',
+        dateLabel: 'Next billing date',
+        dateValue: nextBill,
+        icon: 'warning',
+      };
+    default:
+      return {
+        badge: sub.status,
+        badgeColor: 'slate',
+        hint: '',
+        dateLabel: null,
+        dateValue: null,
+        icon: 'warning',
+      };
+  }
+}
+
+function SubscriptionStatusBanner({ sub }: { sub: SubRow }) {
+  const display = getSubscriptionStatusDisplay(sub);
+  const Icon =
+    display.icon === 'active' ? CheckCircle2 : display.icon === 'ending' ? RefreshCw : AlertCircle;
+  const iconClass =
+    display.icon === 'active'
+      ? 'text-emerald-600 bg-emerald-50'
+      : display.icon === 'ending'
+        ? 'text-amber-600 bg-amber-50'
+        : 'text-red-600 bg-red-50';
+
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-slate-200/80 bg-white p-4">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconClass}`}>
+        <Icon size={20} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <Badge color={display.badgeColor} className="text-[10px]">
+          {display.badge}
+        </Badge>
+        {display.hint && (
+          <p className="text-xs font-semibold text-slate-600 leading-relaxed">{display.hint}</p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function formatCardLabel(pm: NonNullable<NonNullable<BillingStatus['subscription']>['paymentMethod']>): string {
@@ -217,28 +296,30 @@ export const SubscriptionView: React.FC<{
       )}
 
       {!statusLoading && isEntitled && activeSub && (
-        <Card className="p-6 space-y-5 border-emerald-100 bg-gradient-to-b from-emerald-50/50 to-white">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600" aria-hidden />
-            <div className="min-w-0 flex-1 space-y-1">
-              <p className="text-sm font-black text-slate-900">{activeSub.planName}</p>
-              <p className="text-xs font-semibold text-slate-600">
-                {intervalLabel(activeSub.billingInterval)} ·{' '}
-                {formatPlanAmount(activeSub.amountCents, activeSub.currency)} per{' '}
-                {formatInterval(activeSub.billingInterval)}
-              </p>
-              <div className="pt-1">
-                <Badge color="green">{statusLabel(activeSub.status)}</Badge>
-              </div>
-            </div>
+        <Card className="p-6 space-y-5 border-slate-200 bg-gradient-to-b from-slate-50/40 to-white">
+          <SubscriptionStatusBanner sub={activeSub} />
+
+          <div className="space-y-1">
+            <p className="text-sm font-black text-slate-900">{activeSub.planName}</p>
+            <p className="text-xs font-semibold text-slate-600">
+              {intervalLabel(activeSub.billingInterval)} ·{' '}
+              {formatPlanAmount(activeSub.amountCents, activeSub.currency)} per{' '}
+              {formatInterval(activeSub.billingInterval)}
+            </p>
           </div>
 
-          <dl className="text-xs">
-            <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">Next billing date</dt>
-            <dd className="font-semibold text-slate-800 mt-0.5">
-              {formatBillingDate(activeSub.nextPaymentAt) ?? '—'}
-            </dd>
-          </dl>
+          {(() => {
+            const display = getSubscriptionStatusDisplay(activeSub);
+            if (!display.dateLabel) return null;
+            return (
+              <dl className="text-xs">
+                <dt className="font-bold uppercase tracking-widest text-slate-400 text-[10px]">
+                  {display.dateLabel}
+                </dt>
+                <dd className="font-semibold text-slate-800 mt-0.5">{display.dateValue ?? '—'}</dd>
+              </dl>
+            );
+          })()}
 
           {isAdmin && activeSub.paymentMethod && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -308,35 +389,44 @@ export const SubscriptionView: React.FC<{
       )}
 
       {!statusLoading && isAdmin && !isEntitled && (
-        <Card className="p-6 space-y-5">
+        <div className="space-y-5">
           {plansLoading && (
-            <div className="flex items-center justify-center gap-2 py-8 text-slate-500">
-              <Loader2 className="w-5 h-5 animate-spin text-indigo-600" aria-hidden />
-              <span className="text-xs font-bold">Loading plans…</span>
-            </div>
+            <Card className="p-6">
+              <div className="flex items-center justify-center gap-2 py-8 text-slate-500">
+                <Loader2 className="w-5 h-5 animate-spin text-indigo-600" aria-hidden />
+                <span className="text-xs font-bold">Loading plans…</span>
+              </div>
+            </Card>
           )}
 
           {!plansLoading && plansError && (
-            <div className="rs-alert rs-alert--danger" role="alert">
-              <div className="rs-alert-body text-sm font-semibold">{plansError}</div>
-              <Button variant="secondary" className="mt-3" onClick={() => void loadPlans()}>
-                Try again
-              </Button>
-            </div>
+            <Card className="p-6">
+              <div className="rs-alert rs-alert--danger" role="alert">
+                <div className="rs-alert-body text-sm font-semibold">{plansError}</div>
+                <Button variant="secondary" className="mt-3" onClick={() => void loadPlans()}>
+                  Try again
+                </Button>
+              </div>
+            </Card>
           )}
 
           {!plansLoading && !plansError && plans.length > 0 && (
             <>
               <div>
-                <p className="text-xs font-semibold text-slate-500 leading-relaxed">
-                  Choose a billing term for your department. All doctors in this department use RosterSync at no extra cost.
+                <p className="text-sm font-black text-slate-900">Choose a plan</p>
+                <p className="text-xs font-semibold text-slate-500 mt-1 leading-relaxed">
+                  Pick a billing term for your department. All doctors use RosterSync at no extra cost.
                 </p>
                 <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">
                   Billed to {currentUser.email}
                 </p>
               </div>
 
-              <div className="space-y-2" role="radiogroup" aria-label="Subscription plan">
+              <div
+                className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+                role="radiogroup"
+                aria-label="Subscription plan"
+              >
                 {plans.map((plan) => {
                   const selected = plan.planCode === selectedPlanCode;
                   return (
@@ -346,27 +436,33 @@ export const SubscriptionView: React.FC<{
                       role="radio"
                       aria-checked={selected}
                       onClick={() => setSelectedPlanCode(plan.planCode)}
-                      className={`w-full text-left rounded-2xl border p-4 transition-colors touch-manipulation ${
+                      className={`relative flex flex-col text-left rounded-2xl border p-4 min-h-[11rem] transition-all touch-manipulation ${
                         selected
-                          ? 'border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200'
-                          : 'border-slate-200 bg-white hover:border-slate-300 active:bg-slate-50'
+                          ? 'border-indigo-400 bg-indigo-50/80 ring-2 ring-indigo-200 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-indigo-200 hover:shadow-sm active:bg-slate-50'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-black text-slate-900">{plan.name}</p>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-0.5">
-                            {intervalLabel(plan.interval)}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-sm font-black text-indigo-700">
-                            {formatPlanAmount(plan.amount, plan.currency)}
-                          </p>
-                          <p className="text-[10px] font-semibold text-slate-500">
-                            per {formatInterval(plan.interval)}
-                          </p>
-                        </div>
+                      {selected && (
+                        <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-white">
+                          <Check size={14} strokeWidth={3} aria-hidden />
+                        </span>
+                      )}
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 pr-8">
+                        {intervalLabel(plan.interval)}
+                      </p>
+                      <p className="text-sm font-black text-slate-900 mt-2 leading-snug">{plan.name}</p>
+                      {plan.description && (
+                        <p className="text-[11px] font-semibold text-slate-500 mt-1.5 leading-relaxed flex-1">
+                          {plan.description}
+                        </p>
+                      )}
+                      <div className="mt-auto pt-4">
+                        <p className="text-lg font-black text-indigo-700 leading-none">
+                          {formatPlanAmount(plan.amount, plan.currency)}
+                        </p>
+                        <p className="text-[10px] font-semibold text-slate-500 mt-1">
+                          per {formatInterval(plan.interval)}
+                        </p>
                       </div>
                     </button>
                   );
@@ -386,7 +482,7 @@ export const SubscriptionView: React.FC<{
               )}
               <Button
                 variant="primary"
-                className="w-full py-3.5"
+                className="w-full py-3.5 sm:max-w-xs"
                 disabled={checkoutLoading || !selectedPlanCode}
                 onClick={() => void handleSubscribe()}
               >
@@ -403,9 +499,13 @@ export const SubscriptionView: React.FC<{
           )}
 
           {!plansLoading && !plansError && plans.length === 0 && (
-            <p className="text-xs font-semibold text-slate-500 text-center py-4">No subscription plans available.</p>
+            <Card className="p-6">
+              <p className="text-xs font-semibold text-slate-500 text-center py-4">
+                No subscription plans available.
+              </p>
+            </Card>
           )}
-        </Card>
+        </div>
       )}
 
       {!statusLoading && !isAdmin && !isEntitled && (

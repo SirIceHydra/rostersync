@@ -490,8 +490,9 @@ export async function getDepartmentSubscriptionStatus(
     return { hasSubscription: false, isEntitled: false, subscription: null };
   }
 
-  const status = row.status as DepartmentSubscriptionStatus;
-  const isEntitled = SUBSCRIPTION_ENTITLED_STATUSES.includes(status);
+  let status = row.status as DepartmentSubscriptionStatus;
+  let isEntitled = SUBSCRIPTION_ENTITLED_STATUSES.includes(status);
+  let periodEnd = toEpochMs(row.current_period_end);
 
   if (!row.paystack_subscription_code && isEntitled) {
     try {
@@ -532,12 +533,39 @@ export async function getDepartmentSubscriptionStatus(
   if (subscriptionCode) {
     try {
       const live = await fetchSubscription(subscriptionCode);
+      const liveStatus = mapPaystackSubscriptionStatus(live.status);
       const liveNext = nextPaymentMs(live);
+      const statusChanged = liveStatus !== status;
+      if (statusChanged) {
+        status = liveStatus;
+        isEntitled = SUBSCRIPTION_ENTITLED_STATUSES.includes(status);
+      }
       if (liveNext) {
         nextPaymentAt = liveNext;
+        if (liveStatus === 'NON_RENEWING' && !periodEnd) {
+          periodEnd = liveNext;
+        }
+      }
+      const patch: unknown[] = [];
+      const sets: string[] = [];
+      if (statusChanged) {
+        sets.push('status = ?');
+        patch.push(liveStatus);
+      }
+      if (liveNext) {
+        sets.push('next_payment_at = ?');
+        patch.push(liveNext);
+      }
+      if (liveStatus === 'NON_RENEWING' && liveNext && !toEpochMs(row.current_period_end)) {
+        sets.push('current_period_end = ?');
+        patch.push(liveNext);
+      }
+      if (sets.length) {
+        sets.push('updated_at = ?');
+        patch.push(Date.now(), row.id);
         await db.run(
-          `UPDATE department_subscriptions SET next_payment_at = ?, updated_at = ? WHERE id = ?`,
-          [liveNext, Date.now(), row.id]
+          `UPDATE department_subscriptions SET ${sets.join(', ')} WHERE id = ?`,
+          patch
         );
       }
       if (!cardLast4) {
@@ -592,7 +620,7 @@ export async function getDepartmentSubscriptionStatus(
       amountCents: row.amount_cents,
       currency: row.currency,
       currentPeriodStart: toEpochMs(row.current_period_start),
-      currentPeriodEnd: toEpochMs(row.current_period_end),
+      currentPeriodEnd: periodEnd ?? toEpochMs(row.current_period_end),
       nextPaymentAt,
       paystackSubscriptionCode: row.paystack_subscription_code ?? null,
       paymentMethod,
