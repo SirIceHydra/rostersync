@@ -131,6 +131,48 @@ export async function initializeSubscriptionCheckout(input: {
   });
 }
 
+/** Card authorization only — no plan on the transaction (subscription created after verify). */
+export async function initializeCardAuthorizationCheckout(input: {
+  email: string;
+  amountCents: number;
+  reference: string;
+  metadata?: Record<string, string>;
+  callbackUrl?: string;
+}): Promise<PaystackInitializeData> {
+  return paystackFetch<PaystackInitializeData>('/transaction/initialize', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: input.email,
+      amount: input.amountCents,
+      reference: input.reference,
+      metadata: input.metadata,
+      ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
+    }),
+  });
+}
+
+/** Create a Paystack subscription (e.g. with delayed start_date for a free trial). */
+export async function createPaystackSubscription(input: {
+  customerCode: string;
+  planCode: string;
+  startDate: Date;
+  authorizationCode?: string | null;
+}): Promise<PaystackSubscription> {
+  const body: Record<string, string> = {
+    customer: input.customerCode.trim(),
+    plan: requirePlanCode(input.planCode),
+    start_date: input.startDate.toISOString(),
+  };
+  if (input.authorizationCode?.trim()) {
+    body.authorization = input.authorizationCode.trim();
+  }
+  const raw = await paystackFetch<RawPaystackSubscription>('/subscription', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return normalizeSubscription(raw);
+}
+
 export async function verifyTransaction(reference: string): Promise<PaystackVerifyTransaction> {
   return paystackFetch<PaystackVerifyTransaction>(
     `/transaction/verify/${encodeURIComponent(reference.trim())}`

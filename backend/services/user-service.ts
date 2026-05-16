@@ -6,7 +6,14 @@ import { getPublishedYearRollupForDepartment, normalizeFairnessHistoryMode, type
 import { logger } from '../shared/logger.js';
 import { corsOrigin } from '../shared/corsOrigin.js';
 import dotenv from 'dotenv';
-import { initializeSubscriptionCheckout } from '../shared/paystack.js';
+import {
+  initializeCardAuthorizationCheckout,
+  initializeSubscriptionCheckout,
+} from '../shared/paystack.js';
+import {
+  subscriptionTrialAuthAmountCents,
+  subscriptionTrialMonths,
+} from '../shared/subscriptionTrial.js';
 import {
   confirmDepartmentSubscription,
   createPendingDepartmentSubscription,
@@ -350,7 +357,10 @@ app.get('/api/billing/plans', authMiddleware, adminOnly, withDept, async (_req, 
        WHERE is_active = TRUE
        ORDER BY display_order ASC, name ASC`
     );
+    const trialMonths = subscriptionTrialMonths();
     res.json({
+      trialMonths,
+      trialAuthAmountCents: trialMonths > 0 ? subscriptionTrialAuthAmountCents() : 0,
       plans: rows.map((r: any) => ({
         id: r.id,
         slug: r.slug,
@@ -413,17 +423,28 @@ app.post('/api/billing/subscribe/initialize', authMiddleware, adminOnly, withDep
     const departmentId = (req as any).departmentId as string;
     const reference = `rs_sub_${departmentId.replace(/-/g, '').slice(0, 12)}_${Date.now()}`;
 
-    const data = await initializeSubscriptionCheckout({
-      email: user.email,
-      planCode: planRow.paystack_plan_code,
-      reference,
-      metadata: {
-        department_id: departmentId,
-        user_id: user.userId,
-        plan_id: planRow.id,
-        plan_code: planRow.paystack_plan_code,
-      },
-    });
+    const trialMonths = subscriptionTrialMonths();
+    const metadata = {
+      department_id: departmentId,
+      user_id: user.userId,
+      plan_id: planRow.id,
+      plan_code: planRow.paystack_plan_code,
+    };
+
+    const data =
+      trialMonths > 0
+        ? await initializeCardAuthorizationCheckout({
+            email: user.email,
+            amountCents: subscriptionTrialAuthAmountCents(),
+            reference,
+            metadata,
+          })
+        : await initializeSubscriptionCheckout({
+            email: user.email,
+            planCode: planRow.paystack_plan_code,
+            reference,
+            metadata,
+          });
 
     const subscriptionId = await createPendingDepartmentSubscription(db, {
       departmentId,
@@ -438,6 +459,7 @@ app.post('/api/billing/subscribe/initialize', authMiddleware, adminOnly, withDep
       reference: data.reference,
       planCode: planRow.paystack_plan_code,
       subscriptionId,
+      trialMonths,
     });
   } catch (error: any) {
     logger.error({ err: error }, 'Initialize subscription error');

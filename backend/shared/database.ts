@@ -341,6 +341,7 @@ export class Database implements DbClient {
     await run(`ALTER TABLE department_subscriptions ADD COLUMN IF NOT EXISTS card_exp_month TEXT`);
     await run(`ALTER TABLE department_subscriptions ADD COLUMN IF NOT EXISTS card_exp_year TEXT`);
     await run(`ALTER TABLE department_subscriptions ADD COLUMN IF NOT EXISTS card_bank TEXT`);
+    await run(`ALTER TABLE department_subscriptions ADD COLUMN IF NOT EXISTS trial_ends_at BIGINT`);
 
     // Webhook / audit log — optional payload for debugging and reconciliation.
     await run(`

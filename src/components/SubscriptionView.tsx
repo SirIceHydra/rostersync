@@ -83,10 +83,27 @@ type StatusDisplay = {
   icon: 'active' | 'ending' | 'warning';
 };
 
+function trialMonthsLabel(months: number): string {
+  if (months === 1) return '1 month';
+  return `${months} months`;
+}
+
 function getSubscriptionStatusDisplay(sub: SubRow): StatusDisplay {
   const accessEndMs = sub.currentPeriodEnd ?? sub.nextPaymentAt;
   const accessEnd = formatBillingDate(accessEndMs);
   const nextBill = formatBillingDate(sub.nextPaymentAt);
+  const trialEnd = formatBillingDate(sub.trialEndsAt);
+
+  if (sub.isTrialing) {
+    return {
+      badge: trialEnd ? `Free trial until ${trialEnd}` : 'Free trial',
+      badgeColor: 'green',
+      hint: 'Your card is on file — billing starts automatically when the trial ends.',
+      dateLabel: 'First billing date',
+      dateValue: trialEnd ?? nextBill,
+      icon: 'active',
+    };
+  }
 
   switch (sub.status) {
     case 'ACTIVE':
@@ -188,6 +205,7 @@ export const SubscriptionView: React.FC<{
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [manageLoading, setManageLoading] = useState(false);
   const [manageError, setManageError] = useState<string | null>(null);
+  const [trialMonths, setTrialMonths] = useState(0);
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -207,7 +225,8 @@ export const SubscriptionView: React.FC<{
     setPlansLoading(true);
     setPlansError(null);
     try {
-      const { plans: list } = await api.getBillingPlans();
+      const { plans: list, trialMonths: months } = await api.getBillingPlans();
+      setTrialMonths(months);
       setPlans(list);
       setSelectedPlanCode((prev) => {
         if (prev && list.some((p) => p.planCode === prev)) return prev;
@@ -415,7 +434,9 @@ export const SubscriptionView: React.FC<{
               <div>
                 <p className="text-sm font-black text-slate-900">Choose a plan</p>
                 <p className="text-xs font-semibold text-slate-500 mt-1 leading-relaxed">
-                  Pick a billing term for your department. All doctors use RosterSync at no extra cost.
+                  {trialMonths > 0
+                    ? `Start with a ${trialMonthsLabel(trialMonths)} free trial — add your card to verify, then choose a plan. All doctors use RosterSync at no extra cost.`
+                    : 'Pick a billing term for your department. All doctors use RosterSync at no extra cost.'}
                 </p>
                 <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">
                   Billed to {currentUser.email}
@@ -447,9 +468,16 @@ export const SubscriptionView: React.FC<{
                           <Check size={14} strokeWidth={3} aria-hidden />
                         </span>
                       )}
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 pr-8">
-                        {intervalLabel(plan.interval)}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5 pr-8">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                          {intervalLabel(plan.interval)}
+                        </p>
+                        {trialMonths > 0 && (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-emerald-700">
+                            {trialMonthsLabel(trialMonths)} free
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm font-black text-slate-900 mt-2 leading-snug">{plan.name}</p>
                       {plan.description && (
                         <p className="text-[11px] font-semibold text-slate-500 mt-1.5 leading-relaxed flex-1">
@@ -471,8 +499,18 @@ export const SubscriptionView: React.FC<{
 
               {selectedPlan && (
                 <p className="text-xs font-semibold text-slate-500 leading-relaxed">
-                  You&apos;ll pay {formatPlanAmount(selectedPlan.amount, selectedPlan.currency)} per{' '}
-                  {formatInterval(selectedPlan.interval)} via Paystack.
+                  {trialMonths > 0 ? (
+                    <>
+                      Verify your card on Paystack, then your {trialMonthsLabel(trialMonths)} trial begins.
+                      After that, {formatPlanAmount(selectedPlan.amount, selectedPlan.currency)} per{' '}
+                      {formatInterval(selectedPlan.interval)}.
+                    </>
+                  ) : (
+                    <>
+                      You&apos;ll pay {formatPlanAmount(selectedPlan.amount, selectedPlan.currency)} per{' '}
+                      {formatInterval(selectedPlan.interval)} via Paystack.
+                    </>
+                  )}
                 </p>
               )}
               {checkoutError && (
@@ -492,7 +530,7 @@ export const SubscriptionView: React.FC<{
                     Processing…
                   </span>
                 ) : (
-                  'Subscribe now'
+                  trialMonths > 0 ? 'Start free trial' : 'Subscribe now'
                 )}
               </Button>
             </>

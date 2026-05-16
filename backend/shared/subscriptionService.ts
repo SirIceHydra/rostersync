@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import type { DbClient } from './database.js';
 import {
+  createPaystackSubscription,
   extractNextPaymentMs,
   fetchSubscription,
   getSubscriptionManageLink,
@@ -11,6 +12,11 @@ import {
   type PaystackSubscription,
   type PaystackVerifyTransaction,
 } from './paystack.js';
+import {
+  computeTrialEndsAtMs,
+  isSubscriptionOnTrial,
+  subscriptionTrialMonths,
+} from './subscriptionTrial.js';
 import type { SubscriptionBillingInterval } from './subscriptionTypes.js';
 import {
   SUBSCRIPTION_ENTITLED_STATUSES,
@@ -306,6 +312,8 @@ export async function confirmDepartmentSubscription(
   status: DepartmentSubscriptionStatus;
   isEntitled: boolean;
   paystackSubscriptionCode: string | null;
+  trialEndsAt: number | null;
+  isTrialing: boolean;
 }> {
   const row = await db.get(
     `SELECT ds.*, sp.paystack_plan_code, sp.billing_interval
@@ -322,12 +330,15 @@ export async function confirmDepartmentSubscription(
     throw new Error('This checkout was started by another admin');
   }
 
-  if (row.status === 'ACTIVE' && row.ended_at == null) {
+  if (row.status === 'ACTIVE' && row.ended_at == null && row.paystack_subscription_code) {
+    const trialEndsAt = toEpochMs(row.trial_ends_at);
     return {
       subscriptionId: row.id,
       status: 'ACTIVE',
       isEntitled: true,
       paystackSubscriptionCode: row.paystack_subscription_code ?? null,
+      trialEndsAt,
+      isTrialing: isSubscriptionOnTrial(trialEndsAt),
     };
   }
 
@@ -354,35 +365,73 @@ export async function confirmDepartmentSubscription(
     throw new Error('Payment metadata does not match this department');
   }
 
-  const customerCode = tx.customer?.customer_code;
-  const authorizationCode = tx.authorization?.authorization_code ?? null;
+  const customerCode = tx.customer?.customer_code?.trim() ?? '';
+  const authorizationCode = tx.authorization?.authorization_code?.trim() ?? null;
+  const periodStart = paidAtMs(tx);
+  const now = Date.now();
+  const trialMonths = subscriptionTrialMonths();
 
   let paystackSub: PaystackSubscription | null = null;
-  if (customerCode) {
-    try {
-      const subs = await listCustomerSubscriptions(customerCode);
-      paystackSub = pickSubscriptionForPlan(subs, row.paystack_plan_code);
-    } catch {
-      paystackSub = null;
+  let trialEndsAt: number | null = null;
+  let nextPayment: number | null = null;
+
+  if (trialMonths > 0) {
+    if (!customerCode) {
+      throw new Error('Paystack did not return a customer for this payment');
+    }
+    if (!authorizationCode) {
+      throw new Error('Card authorization failed — no reusable authorization from Paystack');
+    }
+
+    trialEndsAt = computeTrialEndsAtMs(now);
+    if (!trialEndsAt) {
+      throw new Error('Trial period could not be calculated');
+    }
+
+    if (row.paystack_subscription_code?.trim()) {
+      try {
+        paystackSub = await fetchSubscription(row.paystack_subscription_code.trim());
+      } catch {
+        paystackSub = null;
+      }
+    }
+
+    if (!paystackSub) {
+      paystackSub = await createPaystackSubscription({
+        customerCode,
+        planCode: row.paystack_plan_code,
+        authorizationCode,
+        startDate: new Date(trialEndsAt),
+      });
+    }
+
+    nextPayment = nextPaymentMs(paystackSub) ?? trialEndsAt;
+  } else {
+    if (customerCode) {
+      try {
+        const subs = await listCustomerSubscriptions(customerCode);
+        paystackSub = pickSubscriptionForPlan(subs, row.paystack_plan_code);
+      } catch {
+        paystackSub = null;
+      }
+    }
+
+    nextPayment = nextPaymentMs(paystackSub);
+    if (!nextPayment && paystackSub?.subscription_code) {
+      try {
+        nextPayment = nextPaymentMs(await fetchSubscription(paystackSub.subscription_code));
+      } catch {
+        /* fall through */
+      }
+    }
+    if (!nextPayment && periodStart) {
+      nextPayment = estimateNextBillingMs(row.billing_interval, periodStart);
     }
   }
 
-  const status = paystackSub
+  const status: DepartmentSubscriptionStatus = paystackSub
     ? mapPaystackSubscriptionStatus(paystackSub.status)
     : 'ACTIVE';
-  const periodStart = paidAtMs(tx);
-  let nextPayment = nextPaymentMs(paystackSub);
-  if (!nextPayment && paystackSub?.subscription_code) {
-    try {
-      nextPayment = nextPaymentMs(await fetchSubscription(paystackSub.subscription_code));
-    } catch {
-      /* fall through to estimate */
-    }
-  }
-  if (!nextPayment && periodStart) {
-    nextPayment = estimateNextBillingMs(row.billing_interval, periodStart);
-  }
-  const now = Date.now();
   const cardAuth = paystackSub?.authorization ?? tx.authorization ?? null;
   const card = cardFieldsFromAuthorization(cardAuth);
 
@@ -398,6 +447,7 @@ export async function confirmDepartmentSubscription(
         current_period_start = ?,
         current_period_end = ?,
         next_payment_at = ?,
+        trial_ends_at = ?,
         card_brand = ?,
         card_last4 = ?,
         card_exp_month = ?,
@@ -410,11 +460,12 @@ export async function confirmDepartmentSubscription(
       [
         status,
         paystackSub?.subscription_code ?? null,
-        customerCode ?? null,
+        customerCode || null,
         paystackSub?.authorization?.authorization_code ?? authorizationCode,
         periodStart,
+        trialEndsAt ?? nextPayment,
         nextPayment,
-        nextPayment,
+        trialEndsAt,
         card.cardBrand,
         card.cardLast4,
         card.cardExpMonth,
@@ -429,11 +480,12 @@ export async function confirmDepartmentSubscription(
   await logSubscriptionEvent(db, {
     departmentSubscriptionId: row.id,
     departmentId: input.departmentId,
-    eventType: 'checkout.confirmed',
+    eventType: trialEndsAt ? 'checkout.confirmed.trial' : 'checkout.confirmed',
     payload: {
       reference: input.reference,
       paystackSubscriptionCode: paystackSub?.subscription_code ?? null,
       status,
+      trialEndsAt,
     },
   });
 
@@ -442,6 +494,8 @@ export async function confirmDepartmentSubscription(
     status,
     isEntitled: SUBSCRIPTION_ENTITLED_STATUSES.includes(status),
     paystackSubscriptionCode: paystackSub?.subscription_code ?? null,
+    trialEndsAt,
+    isTrialing: isSubscriptionOnTrial(trialEndsAt),
   };
 }
 
@@ -462,6 +516,8 @@ export async function getDepartmentSubscriptionStatus(
     currentPeriodStart: number | null;
     currentPeriodEnd: number | null;
     nextPaymentAt: number | null;
+    trialEndsAt: number | null;
+    isTrialing: boolean;
     paystackSubscriptionCode: string | null;
     paymentMethod: {
       brand: string;
@@ -474,7 +530,7 @@ export async function getDepartmentSubscriptionStatus(
 }> {
   const row = await db.get(
     `SELECT ds.id, ds.status, ds.created_at, ds.current_period_start, ds.current_period_end, ds.next_payment_at,
-            ds.paystack_subscription_code, ds.card_brand, ds.card_last4, ds.card_exp_month,
+            ds.trial_ends_at, ds.paystack_subscription_code, ds.card_brand, ds.card_last4, ds.card_exp_month,
             ds.card_exp_year, ds.card_bank,
             sp.paystack_plan_code, sp.name AS plan_name, sp.billing_interval,
             sp.amount_cents, sp.currency
@@ -590,7 +646,12 @@ export async function getDepartmentSubscriptionStatus(
     }
   }
 
-  if (!nextPaymentAt) {
+  const trialEndsAt = toEpochMs(row.trial_ends_at);
+  const onTrial = isSubscriptionOnTrial(trialEndsAt);
+
+  if (onTrial && trialEndsAt) {
+    nextPaymentAt = trialEndsAt;
+  } else if (!nextPaymentAt) {
     const anchor = periodStart ?? createdAt;
     if (anchor) {
       nextPaymentAt = estimateNextBillingMs(row.billing_interval, anchor);
@@ -622,6 +683,8 @@ export async function getDepartmentSubscriptionStatus(
       currentPeriodStart: toEpochMs(row.current_period_start),
       currentPeriodEnd: periodEnd ?? toEpochMs(row.current_period_end),
       nextPaymentAt,
+      trialEndsAt,
+      isTrialing: onTrial,
       paystackSubscriptionCode: row.paystack_subscription_code ?? null,
       paymentMethod,
     },

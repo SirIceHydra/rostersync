@@ -351,6 +351,8 @@ class ApiClient {
 
   async getBillingPlans() {
     return this.request<{
+      trialMonths: number;
+      trialAuthAmountCents: number;
       plans: {
         id: string;
         slug: string | null;
@@ -384,6 +386,8 @@ class ApiClient {
       status: string;
       isEntitled: boolean;
       paystackSubscriptionCode: string | null;
+      trialEndsAt: number | null;
+      isTrialing: boolean;
     }>('/api/billing/subscribe/confirm', {
       method: 'POST',
       body: JSON.stringify({ reference }),
@@ -405,6 +409,8 @@ class ApiClient {
         currentPeriodStart: number | null;
         currentPeriodEnd: number | null;
         nextPaymentAt: number | null;
+        trialEndsAt: number | null;
+        isTrialing: boolean;
         paystackSubscriptionCode: string | null;
         paymentMethod: {
           brand: string;
