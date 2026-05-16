@@ -137,17 +137,90 @@ export async function verifyTransaction(reference: string): Promise<PaystackVeri
   );
 }
 
+type PaystackCustomer = {
+  id: number;
+  customer_code: string;
+  email?: string;
+};
+
+type RawPaystackSubscription = PaystackSubscription & {
+  customer?: PaystackSubscription['customer'] | PaystackCustomer;
+  plan?: PaystackSubscription['plan'] | { plan_code?: string; name?: string; interval?: string };
+};
+
+function normalizeSubscription(raw: RawPaystackSubscription): PaystackSubscription {
+  const customerObj =
+    raw.customer && typeof raw.customer === 'object' ? raw.customer : undefined;
+  const customerCode =
+    customerObj && 'customer_code' in customerObj ? customerObj.customer_code : '';
+
+  const planObj = raw.plan && typeof raw.plan === 'object' ? raw.plan : undefined;
+  const planCode = planObj && 'plan_code' in planObj ? planObj.plan_code ?? '' : '';
+
+  return {
+    subscription_code: raw.subscription_code,
+    status: raw.status,
+    amount: raw.amount,
+    next_payment_date: raw.next_payment_date,
+    nextPaymentDate: raw.nextPaymentDate,
+    createdAt: raw.createdAt,
+    created_at: raw.created_at,
+    customer: { customer_code: customerCode },
+    plan: {
+      plan_code: planCode,
+      name: planObj && 'name' in planObj ? planObj.name : undefined,
+      interval: planObj && 'interval' in planObj ? planObj.interval : undefined,
+    },
+    authorization: raw.authorization,
+  };
+}
+
+function normalizeSubscriptionList(data: unknown): PaystackSubscription[] {
+  const rows = Array.isArray(data)
+    ? data
+    : (data as { subscriptions?: RawPaystackSubscription[] })?.subscriptions ?? [];
+  return rows
+    .filter((row) => row?.subscription_code)
+    .map((row) => normalizeSubscription(row as RawPaystackSubscription));
+}
+
+export async function fetchCustomer(customerCode: string): Promise<PaystackCustomer> {
+  return paystackFetch<PaystackCustomer>(`/customer/${encodeURIComponent(customerCode.trim())}`);
+}
+
+/** List subscriptions for a customer (Paystack expects numeric customer id, not CUS_ code). */
 export async function listCustomerSubscriptions(customerCode: string): Promise<PaystackSubscription[]> {
-  const data = await paystackFetch<PaystackSubscription[] | { subscriptions?: PaystackSubscription[] }>(
-    `/subscription?customer=${encodeURIComponent(customerCode)}`
+  const customer = await fetchCustomer(customerCode);
+  const data = await paystackFetch<unknown>(
+    `/subscription?customer=${encodeURIComponent(String(customer.id))}&perPage=50`
   );
-  if (Array.isArray(data)) return data;
-  return (data as { subscriptions?: PaystackSubscription[] }).subscriptions ?? [];
+  return normalizeSubscriptionList(data);
 }
 
 export async function fetchSubscription(subscriptionCode: string): Promise<PaystackSubscription> {
-  return paystackFetch<PaystackSubscription>(
+  const raw = await paystackFetch<RawPaystackSubscription>(
     `/subscription/${encodeURIComponent(subscriptionCode.trim())}`
+  );
+  return normalizeSubscription(raw);
+}
+
+/** Pick the best matching subscription for a plan code. */
+export function pickSubscriptionForPlan(
+  subscriptions: PaystackSubscription[],
+  planCode: string
+): PaystackSubscription | null {
+  if (!subscriptions.length) return null;
+  const code = planCode.trim();
+  const activeish = (s: PaystackSubscription) => {
+    const st = s.status?.toLowerCase() ?? '';
+    return st === 'active' || st === 'non-renewing' || st === 'attention';
+  };
+  return (
+    subscriptions.find((s) => s.plan?.plan_code === code && activeish(s)) ??
+    subscriptions.find((s) => s.plan?.plan_code === code) ??
+    subscriptions.find(activeish) ??
+    subscriptions[0] ??
+    null
   );
 }
 

@@ -5,6 +5,7 @@ import {
   fetchSubscription,
   getSubscriptionManageLink,
   listCustomerSubscriptions,
+  pickSubscriptionForPlan,
   verifyTransaction,
   type PaystackAuthorization,
   type PaystackSubscription,
@@ -116,6 +117,88 @@ function cardFieldsFromAuthorization(auth?: PaystackAuthorization | null) {
     cardExpYear: auth.exp_year != null ? String(auth.exp_year) : null,
     cardBank: auth.bank?.trim() || null,
   };
+}
+
+type DepartmentSubscriptionRow = {
+  id: string;
+  status: string;
+  paystack_subscription_code?: string | null;
+  paystack_customer_code?: string | null;
+  checkout_reference?: string | null;
+  paystack_plan_code: string;
+  billing_interval?: string;
+};
+
+/** Find Paystack SUB_ code from API when missing in DB; persist for future requests. */
+async function resolvePaystackSubscriptionCode(
+  db: DbClient,
+  row: DepartmentSubscriptionRow
+): Promise<string> {
+  if (row.paystack_subscription_code?.trim()) {
+    return row.paystack_subscription_code.trim();
+  }
+
+  let customerCode = row.paystack_customer_code?.trim() ?? '';
+  let subscriptions: PaystackSubscription[] = [];
+
+  if (customerCode) {
+    try {
+      subscriptions = await listCustomerSubscriptions(customerCode);
+    } catch {
+      subscriptions = [];
+    }
+  }
+
+  if (!subscriptions.length && row.checkout_reference?.trim()) {
+    try {
+      const tx = await verifyTransaction(row.checkout_reference.trim());
+      customerCode = tx.customer?.customer_code?.trim() ?? customerCode;
+      if (customerCode) {
+        subscriptions = await listCustomerSubscriptions(customerCode);
+      }
+    } catch {
+      subscriptions = [];
+    }
+  }
+
+  const match = pickSubscriptionForPlan(subscriptions, row.paystack_plan_code);
+  if (!match?.subscription_code) {
+    throw new Error('No Paystack subscription found for this department');
+  }
+
+  const liveNext = nextPaymentMs(match);
+  const card = cardFieldsFromAuthorization(match.authorization);
+  const now = Date.now();
+
+  await db.run(
+    `UPDATE department_subscriptions SET
+      paystack_subscription_code = ?,
+      paystack_customer_code = COALESCE(paystack_customer_code, ?),
+      paystack_authorization_code = COALESCE(paystack_authorization_code, ?),
+      next_payment_at = COALESCE(?, next_payment_at),
+      card_brand = COALESCE(card_brand, ?),
+      card_last4 = COALESCE(card_last4, ?),
+      card_exp_month = COALESCE(card_exp_month, ?),
+      card_exp_year = COALESCE(card_exp_year, ?),
+      card_bank = COALESCE(card_bank, ?),
+      updated_at = ?
+     WHERE id = ?`,
+    [
+      match.subscription_code,
+      match.customer?.customer_code || customerCode || null,
+      match.authorization?.authorization_code ?? null,
+      liveNext,
+      card.cardBrand,
+      card.cardLast4,
+      card.cardExpMonth,
+      card.cardExpYear,
+      card.cardBank,
+      now,
+      row.id,
+    ]
+  );
+
+  return match.subscription_code;
 }
 
 async function logSubscriptionEvent(
@@ -276,12 +359,12 @@ export async function confirmDepartmentSubscription(
 
   let paystackSub: PaystackSubscription | null = null;
   if (customerCode) {
-    const subs = await listCustomerSubscriptions(customerCode);
-    paystackSub =
-      subs.find((s) => s.plan?.plan_code === row.paystack_plan_code && s.status === 'active') ??
-      subs.find((s) => s.plan?.plan_code === row.paystack_plan_code) ??
-      subs[0] ??
-      null;
+    try {
+      const subs = await listCustomerSubscriptions(customerCode);
+      paystackSub = pickSubscriptionForPlan(subs, row.paystack_plan_code);
+    } catch {
+      paystackSub = null;
+    }
   }
 
   const status = paystackSub
@@ -410,6 +493,29 @@ export async function getDepartmentSubscriptionStatus(
   const status = row.status as DepartmentSubscriptionStatus;
   const isEntitled = SUBSCRIPTION_ENTITLED_STATUSES.includes(status);
 
+  if (!row.paystack_subscription_code && isEntitled) {
+    try {
+      await resolvePaystackSubscriptionCode(db, {
+        id: row.id,
+        status: row.status,
+        paystack_subscription_code: row.paystack_subscription_code,
+        paystack_customer_code: row.paystack_customer_code,
+        checkout_reference: row.checkout_reference,
+        paystack_plan_code: row.paystack_plan_code,
+        billing_interval: row.billing_interval,
+      });
+      const refreshed = await db.get(
+        `SELECT paystack_subscription_code, paystack_customer_code, card_brand, card_last4,
+                card_exp_month, card_exp_year, card_bank, next_payment_at
+         FROM department_subscriptions WHERE id = ?`,
+        [row.id]
+      );
+      if (refreshed) Object.assign(row, refreshed);
+    } catch {
+      /* manage-link flow can still resolve later */
+    }
+  }
+
   let cardBrand = row.card_brand as string | null;
   let cardLast4 = row.card_last4 as string | null;
   let cardExpMonth = row.card_exp_month as string | null;
@@ -419,9 +525,13 @@ export async function getDepartmentSubscriptionStatus(
   const periodStart = toEpochMs(row.current_period_start);
   const createdAt = toEpochMs(row.created_at);
 
-  if (row.paystack_subscription_code) {
+  const subscriptionCode = row.paystack_subscription_code?.trim()
+    ? row.paystack_subscription_code.trim()
+    : null;
+
+  if (subscriptionCode) {
     try {
-      const live = await fetchSubscription(row.paystack_subscription_code);
+      const live = await fetchSubscription(subscriptionCode);
       const liveNext = nextPaymentMs(live);
       if (liveNext) {
         nextPaymentAt = liveNext;
@@ -495,17 +605,21 @@ export async function getDepartmentSubscriptionManageLink(
   departmentId: string
 ): Promise<string> {
   const row = await db.get(
-    `SELECT paystack_subscription_code, status FROM department_subscriptions
-     WHERE department_id = ? AND ended_at IS NULL
-     ORDER BY created_at DESC LIMIT 1`,
+    `SELECT ds.id, ds.status, ds.paystack_subscription_code, ds.paystack_customer_code,
+            ds.checkout_reference, sp.paystack_plan_code, sp.billing_interval
+     FROM department_subscriptions ds
+     INNER JOIN subscription_plans sp ON sp.id = ds.plan_id
+     WHERE ds.department_id = ? AND ds.ended_at IS NULL
+     ORDER BY ds.created_at DESC LIMIT 1`,
     [departmentId]
   );
-  if (!row?.paystack_subscription_code) {
-    throw new Error('No Paystack subscription found for this department');
+  if (!row) {
+    throw new Error('No subscription found for this department');
   }
   const status = row.status as DepartmentSubscriptionStatus;
   if (!SUBSCRIPTION_ENTITLED_STATUSES.includes(status)) {
     throw new Error('Subscription is not active');
   }
-  return getSubscriptionManageLink(row.paystack_subscription_code);
+  const code = await resolvePaystackSubscriptionCode(db, row as DepartmentSubscriptionRow);
+  return getSubscriptionManageLink(code);
 }
